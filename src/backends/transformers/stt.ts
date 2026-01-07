@@ -7,7 +7,7 @@
 
 import { pipeline } from '@huggingface/transformers';
 import type { STTPipeline, TransformersSTTConfig, ProgressCallback, TurnContext } from '../../types';
-import { getCachedOrLoad } from '../../cache';
+import { getCachedOrLoad } from '../../cache-runtime';
 
 export class TransformersSTT implements STTPipeline {
   private config: TransformersSTTConfig;

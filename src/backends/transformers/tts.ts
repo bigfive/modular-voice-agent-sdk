@@ -8,7 +8,7 @@
 import { pipeline } from '@huggingface/transformers';
 import type { TTSPipeline, TransformersTTSConfig, ProgressCallback, AudioPlayable } from '../../types';
 import { BufferedAudioPlayable } from '../../types';
-import { getCachedOrLoad } from '../../cache';
+import { getCachedOrLoad } from '../../cache-runtime';
 
 export class TransformersTTS implements TTSPipeline {
   private config: TransformersTTSConfig;

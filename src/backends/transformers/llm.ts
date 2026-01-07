@@ -22,7 +22,7 @@ import type {
   ToolDefinition,
 } from '../../types';
 import { LLMLogger, LLMConversationTracker, type TrackerMessage } from '../../services';
-import { getCachedOrLoad } from '../../cache';
+import { getCachedOrLoad } from '../../cache-runtime';
 
 export class TransformersLLM implements LLMPipeline {
   private config: TransformersLLMConfig;
