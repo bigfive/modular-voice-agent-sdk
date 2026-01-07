@@ -29,9 +29,9 @@ async function main(): Promise<void> {
 
   // STT + LLM pipeline - client handles TTS
   const pipeline = createVoicePipeline({
-    create: () => ({
-      stt: new TransformersSTT(CONFIG.stt),
-      llm: new TransformersLLM(CONFIG.llm),
+    create: (modelStore) => ({
+      stt: new TransformersSTT(CONFIG.stt, modelStore),
+      llm: new TransformersLLM(CONFIG.llm, modelStore),
       tts: null,  // Client does WebSpeech TTS
       systemPrompt: CONFIG.systemPrompt,
     }),

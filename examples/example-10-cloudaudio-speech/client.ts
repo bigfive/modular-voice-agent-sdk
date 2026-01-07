@@ -31,7 +31,7 @@ import {
 // ============ Config ============
 
 const client = createVoiceClient({
-  create: () => ({
+  create: (/* modelStore */) => ({
     // No local STT - server handles audio directly with multimodal LLM
     stt: null,
     // Server LLM - CloudAudioLLM processes audio directly

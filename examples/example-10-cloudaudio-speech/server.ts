@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   // Single factory creates both STT and LLM as the same instance
   // CloudAudioLLM implements both interfaces - single API call: audio → transcript + response
   const pipeline = createVoicePipeline({
-    create: () => {
+    create: (/* modelStore */) => {
       const audioLLM = new CloudAudioLLM(CONFIG.audioLLM);
       return {
         stt: audioLLM,  // Same instance handles transcription

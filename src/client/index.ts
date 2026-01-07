@@ -32,6 +32,9 @@ export type {
   ClientComponentFactory,
 } from './voice-client';
 
+// Re-export ModelStore for convenience (also available from main module)
+export type { ModelStore } from '../voice-pipeline';
+
 // Browser speech APIs (for local STT/TTS)
 export { WebSpeechSTT } from './web-speech-stt';
 export type { WebSpeechSTTConfig, WebSpeechSTTResult } from './web-speech-stt';

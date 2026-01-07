@@ -52,7 +52,7 @@ if (!support.webSpeechTTS) {
 // ============ Config ============
 
 const client = createVoiceClient({
-  create: () => ({
+  create: (/* modelStore */) => ({
     // All components are local - no server needed!
     stt: new TransformersSTT({
       model: 'Xenova/whisper-tiny.en',

@@ -37,6 +37,13 @@ const DEFAULT_TOOL_FILLER_PHRASES = [
 // ============ Types ============
 
 /**
+ * Model store for caching heavy resources (models, tokenizers, pipelines).
+ * Pipeline-scoped - each VoicePipeline has its own store.
+ * Backends use simple string keys (e.g., 'model', 'tokenizer') since the store is already scoped.
+ */
+export type ModelStore = Map<string, unknown>;
+
+/**
  * Components returned by the factory - created fresh for each session
  */
 export interface PipelineComponents {
@@ -53,8 +60,13 @@ export interface PipelineComponents {
 /**
  * Factory function that creates pipeline components.
  * Called once during initialize() to warm cache, then once per session.
+ *
+ * @param modelStore - Pipeline-scoped cache for heavy resources.
+ *   Backends can use this to cache models across sessions.
+ *   Same store is passed on every call, so first call populates it,
+ *   subsequent calls find cached resources.
  */
-export type ComponentFactory = () => PipelineComponents;
+export type ComponentFactory = (modelStore: ModelStore) => PipelineComponents;
 
 /**
  * Pipeline configuration
@@ -65,12 +77,27 @@ export interface VoicePipelineConfig {
    * Called once during initialize() to warm the cache,
    * then called again for each new session to create isolated instances.
    *
+   * The factory receives a `modelStore` (Map) for caching heavy resources.
+   * Backends can use this to cache models, tokenizers, etc. across sessions.
+   * The same store is passed on every call, so cached resources persist.
+   *
    * @example
    * ```typescript
+   * // Basic usage (no model caching needed for native/cloud backends)
    * createVoicePipeline({
-   *   create: () => ({
+   *   create: (modelStore) => ({
    *     stt: new NativeSTT({ model: 'base.en' }),
    *     llm: new CloudLLM({ model: 'gpt-5-mini' }),
+   *     tts: null,
+   *     systemPrompt: 'You are a helpful assistant.',
+   *   }),
+   * });
+   *
+   * // With Transformers backends (pass modelStore for caching)
+   * createVoicePipeline({
+   *   create: (modelStore) => ({
+   *     stt: new TransformersSTT(sttConfig, modelStore),
+   *     llm: new TransformersLLM(llmConfig, modelStore),
    *     tts: null,
    *     systemPrompt: 'You are a helpful assistant.',
    *   }),
@@ -126,6 +153,10 @@ export interface SessionBackends {
 export class VoicePipeline {
   // Factory for creating per-session instances
   private factory: ComponentFactory;
+
+  // Pipeline-scoped model store - passed to factory on every call
+  // First call populates it, subsequent calls find cached resources
+  private modelStore: ModelStore = new Map();
 
   // Internal components for pipeline's own use (e.g., local/browser mode)
   private components: PipelineComponents | null = null;
@@ -200,8 +231,9 @@ export class VoicePipeline {
    * Subsequent session instances will initialize instantly from cache.
    */
   async initialize(onProgress?: ProgressCallback): Promise<void> {
-    // Create components via factory - these warm the cache and are kept for pipeline's own use
-    this.components = this.factory();
+    // Create components via factory - pass model store for caching
+    // First call populates the store, keeping models for future sessions
+    this.components = this.factory(this.modelStore);
 
     // Check if STT and LLM are the same instance (e.g., CloudAudioLLM)
     const sameSTTAndLLM = this.components.stt !== null &&
@@ -239,7 +271,8 @@ export class VoicePipeline {
     }
 
     // Create fresh components for this session via factory
-    const components = this.factory();
+    // Same model store is passed - backends find cached resources from initialize()
+    const components = this.factory(this.modelStore);
 
     // Check if STT and LLM are the same instance (e.g., CloudAudioLLM)
     const sameSTTAndLLM = components.stt !== null &&
@@ -694,7 +727,7 @@ export class VoicePipeline {
  * ```typescript
  * // Server with STT + LLM, client handles TTS
  * const pipeline = createVoicePipeline({
- *   create: () => ({
+ *   create: (modelStore) => ({
  *     stt: new NativeSTT({ model: 'base.en' }),
  *     llm: new CloudLLM({ model: 'gpt-5-mini', apiKey: '...' }),
  *     tts: null,
@@ -708,9 +741,22 @@ export class VoicePipeline {
  *
  * @example
  * ```typescript
+ * // Transformers backends with model caching
+ * const pipeline = createVoicePipeline({
+ *   create: (modelStore) => ({
+ *     stt: new TransformersSTT(sttConfig, modelStore),
+ *     llm: new TransformersLLM(llmConfig, modelStore),
+ *     tts: new TransformersTTS(ttsConfig, modelStore),
+ *     systemPrompt: 'You are a helpful assistant.',
+ *   }),
+ * });
+ * ```
+ *
+ * @example
+ * ```typescript
  * // CloudAudioLLM - same instance for STT and LLM
  * const pipeline = createVoicePipeline({
- *   create: () => {
+ *   create: (modelStore) => {
  *     const audioLLM = new CloudAudioLLM({ model: 'gpt-4o-audio-preview' });
  *     return {
  *       stt: audioLLM,

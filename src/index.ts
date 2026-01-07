@@ -11,6 +11,7 @@ export type {
   ConversationContext,
   PipelineComponents,
   ComponentFactory,
+  ModelStore,
 } from './voice-pipeline';
 
 // Types

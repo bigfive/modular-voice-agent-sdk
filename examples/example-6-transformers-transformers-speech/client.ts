@@ -24,7 +24,7 @@ import {
 // ============ Config ============
 
 const client = createVoiceClient({
-  create: () => ({
+  create: (/* modelStore */) => ({
     // Server handles STT - client sends audio
     stt: null,
     // Server handles LLM

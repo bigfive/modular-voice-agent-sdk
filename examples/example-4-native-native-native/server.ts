@@ -43,7 +43,7 @@ async function main(): Promise<void> {
   console.log(`  Sherpa-ONNX:  ${CONFIG.tts.binaryPath}`);
 
   const pipeline = createVoicePipeline({
-    create: () => ({
+    create: (/* modelStore */) => ({
       stt: new NativeSTT(CONFIG.stt),
       llm: new NativeLLM(CONFIG.llm),
       tts: new NativeTTS(CONFIG.tts),

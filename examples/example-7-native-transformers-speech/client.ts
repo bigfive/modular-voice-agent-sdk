@@ -21,7 +21,7 @@ import {
 // ============ Config ============
 
 const client = createVoiceClient({
-  create: () => ({
+  create: (/* modelStore */) => ({
     // Server handles STT (native whisper.cpp)
     stt: null,
     // Server handles LLM (Transformers.js)

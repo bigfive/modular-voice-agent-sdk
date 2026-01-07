@@ -95,24 +95,44 @@ export interface ClientComponents {
   serverUrl?: string;
 }
 
+import type { ModelStore } from '../voice-pipeline';
+
 /**
- * Factory function that creates client components
+ * Factory function that creates client components.
+ *
+ * @param modelStore - Pipeline-scoped cache for heavy resources.
+ *   Backends can use this to cache models across sessions (for fully-local mode).
+ *   Typically not needed for client-side backends like WebSpeechTTS.
  */
-export type ClientComponentFactory = () => ClientComponents;
+export type ClientComponentFactory = (modelStore: ModelStore) => ClientComponents;
 
 export interface VoiceClientConfig {
   /**
    * Factory that creates components.
    * Called once during client construction.
    *
+   * The factory receives a `modelStore` for caching heavy resources.
+   * This is mainly useful for fully-local mode with Transformers backends.
+   *
    * @example
    * ```typescript
+   * // Simple: server handles heavy lifting
    * createVoiceClient({
-   *   create: () => ({
+   *   create: (modelStore) => ({
    *     stt: null,
    *     llm: null,
    *     tts: new WebSpeechTTS(),
    *     serverUrl: 'ws://localhost:3100',
+   *   }),
+   * });
+   *
+   * // Fully local with Transformers (uses modelStore for caching)
+   * createVoiceClient({
+   *   create: (modelStore) => ({
+   *     stt: new TransformersSTT(sttConfig, modelStore),
+   *     llm: new TransformersLLM(llmConfig, modelStore),
+   *     tts: new TransformersTTS(ttsConfig, modelStore),
+   *     systemPrompt: 'You are a helpful assistant.',
    *   }),
    * });
    * ```
@@ -254,6 +274,9 @@ export class VoiceClient {
   private mode: 'local' | 'remote' | 'hybrid';
   private needsServer: boolean;
 
+  // Model store for caching (passed to factory)
+  private modelStore: ModelStore = new Map();
+
   // Local components
   private localSTT: STTPipeline | WebSpeechSTT | null = null;
   private localLLM: LLMPipeline | null = null;
@@ -285,8 +308,8 @@ export class VoiceClient {
 
 
   constructor(config: VoiceClientConfig) {
-    // Get components from factory
-    const components = config.create();
+    // Get components from factory, passing modelStore for caching
+    const components = config.create(this.modelStore);
 
     // Check browser support first
     this.validateBrowserSupport(components);
@@ -376,8 +399,9 @@ export class VoiceClient {
       const ttsForPipeline = isWebSpeechTTS(this.localTTS) ? null : (this.localTTS as TTSPipeline);
 
       // Use the new single-factory pattern
+      // Note: modelStore is ignored here since components were already created above
       this.localPipeline = new VoicePipeline({
-        create: () => ({
+        create: (/* modelStore */) => ({
           stt: sttForPipeline,
           llm: this.localLLM!,
           tts: ttsForPipeline,

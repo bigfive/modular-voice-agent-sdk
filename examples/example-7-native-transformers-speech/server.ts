@@ -43,9 +43,9 @@ async function main(): Promise<void> {
 
   // Mixed pipeline: native STT + Transformers.js LLM + no TTS (client handles)
   const pipeline = createVoicePipeline({
-    create: () => ({
+    create: (modelStore) => ({
       stt: new NativeSTT(CONFIG.stt),
-      llm: new TransformersLLM(CONFIG.llm),
+      llm: new TransformersLLM(CONFIG.llm, modelStore),
       tts: null, // Client handles TTS with WebSpeech
       systemPrompt: CONFIG.systemPrompt,
     }),

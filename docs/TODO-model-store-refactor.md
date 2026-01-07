@@ -1,100 +1,83 @@
-# TODO: Refactor Global Cache to Per-Pipeline Model Store
+# DONE: Per-Pipeline Model Store
 
-## Current State
+✅ **Implemented in `refactor/single-factory-pattern` branch**
 
-Backends use a **global singleton cache** (`runtimeCache` in `cache.ts`) with magic string keys:
+## Summary
 
-```typescript
-// cache.ts - process-wide singleton
-const runtimeCache = new Map<string, unknown>();
+Each `VoicePipeline` and `VoiceClient` now owns its own model store (`Map<string, unknown>`), passed to the factory function when creating components. This replaces the global singleton cache pattern for Transformers backends.
 
-// Backend builds magic key string
-const cacheKey = `transformers-llm:${model}:${dtype}:${device}`;
-this.pipe = await getCachedOrLoad(cacheKey, async () => { ... });
-```
+## How It Works
 
-**Problems:**
-- Global state shared across all pipelines in the process
-- Magic string keys are fragile and hard to maintain
-- Cache persists even after pipelines are destroyed (memory leak potential)
-- Two pipelines with same config unintentionally share state
+1. **Pipeline owns the store:**
+   ```typescript
+   export class VoicePipeline {
+     private modelStore: ModelStore = new Map();
+     
+     async initialize() {
+       // Factory receives store - first call populates cache
+       this.components = this.factory(this.modelStore);
+       // ...
+     }
+     
+     async createSessionBackends() {
+       // Same store passed - finds cached models
+       const components = this.factory(this.modelStore);
+       // ...
+     }
+   }
+   ```
 
-## Proposed: Per-Pipeline Model Store
+2. **Factory receives the store:**
+   ```typescript
+   createVoicePipeline({
+     create: (modelStore) => ({
+       stt: new TransformersSTT(sttConfig, modelStore),
+       llm: new TransformersLLM(llmConfig, modelStore),
+       tts: new TransformersTTS(ttsConfig, modelStore),
+       systemPrompt: 'You are a helpful assistant.',
+     }),
+   });
+   ```
 
-Each `VoicePipeline` instance owns its own model stores (one per slot):
+3. **Backends use the store for caching:**
+   ```typescript
+   export class TransformersLLM implements LLMPipeline {
+     constructor(config: TransformersLLMConfig, modelStore?: ModelStore) {
+       this.modelStore = modelStore;
+     }
+   
+     async initialize() {
+       const cacheKey = `transformers-llm:${model}:${dtype}:${device}`;
+       
+       if (this.modelStore?.has(cacheKey)) {
+         this.pipe = this.modelStore.get(cacheKey);
+       } else {
+         this.pipe = await pipeline('text-generation', ...);
+         this.modelStore?.set(cacheKey, this.pipe);
+       }
+     }
+   }
+   ```
 
-```typescript
-// VoicePipeline
-private sttModelStore = new Map<string, unknown>();
-private llmModelStore = new Map<string, unknown>();
-private ttsModelStore = new Map<string, unknown>();
+## Backwards Compatibility
 
-// Factory signature changes
-type BackendFactory<T> = (modelStore: Map<string, unknown>) => T;
-```
+- **modelStore is optional** - backends fall back to global `getCachedOrLoad` if not provided
+- Native/Cloud backends ignore the store (they don't need caching)
+- Simple examples can use `(/* modelStore */)` to acknowledge but ignore the parameter
 
-**User code:**
-```typescript
-const pipeline = new VoicePipeline({
-  stt: (modelStore) => new TransformersSTT(CONFIG.stt, modelStore),
-  llm: (modelStore) => new TransformersLLM(CONFIG.llm, modelStore),
-  tts: (modelStore) => new TransformersTTS(CONFIG.tts, modelStore),
-  systemPrompt: CONFIG.systemPrompt,
-});
-```
+## Benefits Achieved
 
-**Backend code:**
-```typescript
-export class TransformersLLM implements LLMPipeline {
-  constructor(
-    private config: TransformersLLMConfig,
-    private modelStore: Map<string, unknown>
-  ) {}
-
-  async initialize() {
-    // Simple local key - no magic strings
-    if (this.modelStore.has('pipe')) {
-      this.pipe = this.modelStore.get('pipe');
-      this.ready = true;
-      return;
-    }
-
-    this.pipe = await pipeline('text-generation', this.config.model, ...);
-    this.modelStore.set('pipe', this.pipe);
-    this.ready = true;
-  }
-}
-```
-
-## Why It's Better
-
-| Aspect | Current (Global) | Proposed (Per-Pipeline) |
-|--------|------------------|-------------------------|
+| Aspect | Before (Global) | After (Per-Pipeline) |
+|--------|-----------------|----------------------|
 | Scope | Process-wide singleton | Instance-scoped |
-| Keys | Magic strings: `transformers-llm:model:dtype:device` | Simple: `'pipe'` |
 | Lifecycle | Persists forever | GC'd with pipeline |
-| Independence | All pipelines share | Each pipeline independent |
-| Coupling | Backends import global `getCachedOrLoad` | Backends just use a Map |
+| Independence | All pipelines share | Each pipeline isolated |
+| API | Multiple factory functions | Single unified factory |
 
-## Changes Required
+## Files Changed
 
-1. **`cache.ts`**: Remove `runtimeCache` and `getCachedOrLoad` (or keep for file/binary caching only)
-
-2. **`voice-pipeline.ts`**:
-   - Add `sttModelStore`, `llmModelStore`, `ttsModelStore` instance fields
-   - Update `BackendFactory<T>` type to `(modelStore: Map<string, unknown>) => T`
-   - Pass model store when calling factories
-
-3. **All Transformers backends** (`stt.ts`, `llm.ts`, `tts.ts`):
-   - Add `modelStore` constructor parameter
-   - Replace `getCachedOrLoad` with simple Map get/set
-
-4. **Native/Cloud backends**: No changes needed (they don't cache heavy resources)
-
-5. **All examples**: Update factory syntax from `() => new Backend(config)` to `(modelStore) => new Backend(config, modelStore)`
-
-## Trade-offs
-
-- **Pro**: Cleaner architecture, proper encapsulation, no global state
-- **Con**: Slightly more verbose factory syntax (`(modelStore) =>` instead of `() =>`)
-
+- `src/voice-pipeline.ts` - Added `ModelStore` type and `modelStore` field
+- `src/client/voice-client.ts` - Added `modelStore` field, pass to factory
+- `src/backends/transformers/*.ts` - Accept optional `modelStore`, use for caching
+- `src/index.ts`, `src/client/index.ts` - Export `ModelStore` type
+- All examples - Updated to new factory signature

@@ -55,7 +55,7 @@ if (!support.webSpeechSTTUsable) {
 // ============ Config ============
 
 const client = createVoiceClient({
-  create: () => ({
+  create: (/* modelStore */) => ({
     // All components are local - no server needed!
     stt: new WebSpeechSTT({ language: 'en-US' }),
     llm: new TransformersLLM({

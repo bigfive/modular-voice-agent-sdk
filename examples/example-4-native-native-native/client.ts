@@ -19,7 +19,7 @@ import {
 // ============ Config ============
 
 const client = createVoiceClient({
-  create: () => ({
+  create: (/* modelStore */) => ({
     // All null = server handles everything
     stt: null,
     llm: null,

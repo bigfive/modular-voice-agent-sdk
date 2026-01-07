@@ -22,10 +22,10 @@ async function main(): Promise<void> {
   console.log('Loading Transformers.js models...');
 
   const pipeline = createVoicePipeline({
-    create: () => ({
-      stt: new TransformersSTT(CONFIG.stt),
-      llm: new TransformersLLM(CONFIG.llm),
-      tts: new TransformersTTS(CONFIG.tts),
+    create: (modelStore) => ({
+      stt: new TransformersSTT(CONFIG.stt, modelStore),
+      llm: new TransformersLLM(CONFIG.llm, modelStore),
+      tts: new TransformersTTS(CONFIG.tts, modelStore),
       systemPrompt: CONFIG.systemPrompt,
     }),
   });

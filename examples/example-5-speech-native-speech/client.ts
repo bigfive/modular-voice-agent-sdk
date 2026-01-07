@@ -57,7 +57,7 @@ if (!support.webSpeechSTTUsable) {
 // ============ Config ============
 
 const client = createVoiceClient({
-  create: () => ({
+  create: (/* modelStore */) => ({
     // Local STT - transcribed text sent to server
     stt: new WebSpeechSTT({ language: 'en-US' }),
     // Server LLM - just processes text
