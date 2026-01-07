@@ -1,4 +1,4 @@
-# Modular Voice Agent SDK
+# Modular Voice Agent SDK (MVAS)
 
 Build voice assistants without the plumbing. One SDK, any backend, same interface.
 

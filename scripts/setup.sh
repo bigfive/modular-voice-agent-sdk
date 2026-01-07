@@ -1,20 +1,20 @@
 #!/bin/bash
 #
 # Setup script - downloads models and binaries for native backends
-# Files are stored in ~/.cache/voice-pipeline/
+# Files are stored in ~/.cache/mvas/
 #
-# Usage: npx voice-pipeline setup
+# Usage: npx mvas setup
 #
 
 set -e
 
 # Use global cache directory
-CACHE_DIR="${VOICE_PIPELINE_CACHE:-$HOME/.cache/voice-pipeline}"
+CACHE_DIR="${MVAS_CACHE:-$HOME/.cache/mvas}"
 MODELS_DIR="$CACHE_DIR/models"
 BIN_DIR="$CACHE_DIR/bin"
 
-echo "Voice Pipeline Setup"
-echo "===================="
+echo "Modular Voice Agent SDK Setup"
+echo "=============================="
 echo "Cache directory: $CACHE_DIR"
 echo ""
 
@@ -191,11 +191,11 @@ if [ -n "$MISSING_BREW" ]; then
   echo "⚠️  Missing dependencies:"
   echo "  brew install$MISSING_BREW"
   echo ""
-  echo "Then re-run: npx voice-pipeline setup"
+  echo "Then re-run: npx mvas setup"
 else
   echo ""
   echo "✅ All dependencies installed!"
   echo ""
   echo "You can customize the cache location with:"
-  echo "  export VOICE_PIPELINE_CACHE=/path/to/cache"
+  echo "  export MVAS_CACHE=/path/to/cache"
 fi
