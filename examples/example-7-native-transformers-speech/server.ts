@@ -9,7 +9,7 @@
  * Run: npm run dev:native-transformers
  */
 
-import { VoicePipeline, TransformersLLM } from 'modular-voice-agent-sdk';
+import { createVoicePipeline, TransformersLLM } from 'modular-voice-agent-sdk';
 import { NativeSTT, getBinaryPath, getModelPath, getCacheDir } from 'modular-voice-agent-sdk/native';
 import { createPipelineHandler } from 'modular-voice-agent-sdk/server';
 import { startWebSocketServer, logPipelineInfo } from '../shared';
@@ -42,11 +42,13 @@ async function main(): Promise<void> {
   console.log(`  TTS:     Client handles (WebSpeech)`);
 
   // Mixed pipeline: native STT + Transformers.js LLM + no TTS (client handles)
-  const pipeline = new VoicePipeline({
-    stt: () => new NativeSTT(CONFIG.stt),
-    llm: () => new TransformersLLM(CONFIG.llm),
-    tts: null, // Client handles TTS with WebSpeech
-    systemPrompt: CONFIG.systemPrompt,
+  const pipeline = createVoicePipeline({
+    create: () => ({
+      stt: new NativeSTT(CONFIG.stt),
+      llm: new TransformersLLM(CONFIG.llm),
+      tts: null, // Client handles TTS with WebSpeech
+      systemPrompt: CONFIG.systemPrompt,
+    }),
   });
 
   await pipeline.initialize();

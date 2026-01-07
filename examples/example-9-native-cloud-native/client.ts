@@ -21,11 +21,13 @@ import {
 // ============ Config ============
 
 const client = createVoiceClient({
-  // All null = server handles everything
-  stt: null,
-  llm: null,
-  tts: null,
-  serverUrl: 'ws://localhost:3106',
+  create: () => ({
+    // All null = server handles everything
+    stt: null,
+    llm: null,
+    tts: null,
+    serverUrl: 'ws://localhost:3106',
+  }),
 });
 
 // ============ UI Setup ============

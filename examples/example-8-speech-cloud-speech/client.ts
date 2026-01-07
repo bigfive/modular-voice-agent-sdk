@@ -57,13 +57,15 @@ if (!support.webSpeechSTTUsable) {
 // ============ Config ============
 
 const client = createVoiceClient({
-  // Local STT - transcribed text sent to server
-  stt: new WebSpeechSTT({ language: 'en-US' }),
-  // Server LLM - proxies to cloud API
-  llm: null,
-  // Local TTS - speaks response text from server
-  tts: new WebSpeechTTS({ voiceName: 'Samantha', rate: 1.1 }),
-  serverUrl: 'ws://localhost:3105',
+  create: () => ({
+    // Local STT - transcribed text sent to server
+    stt: new WebSpeechSTT({ language: 'en-US' }),
+    // Server LLM - proxies to cloud API
+    llm: null,
+    // Local TTS - speaks response text from server
+    tts: new WebSpeechTTS({ voiceName: 'Samantha', rate: 1.1 }),
+    serverUrl: 'ws://localhost:3105',
+  }),
 });
 
 // ============ UI Setup ============

@@ -17,7 +17,7 @@
  * Run: npm run example8
  */
 
-import { VoicePipeline } from 'modular-voice-agent-sdk';
+import { createVoicePipeline } from 'modular-voice-agent-sdk';
 import { CloudLLM } from 'modular-voice-agent-sdk/cloud';
 import { createPipelineHandler } from 'modular-voice-agent-sdk/server';
 import { startWebSocketServer, logPipelineInfo, demoTools } from '../shared';
@@ -51,11 +51,13 @@ async function main(): Promise<void> {
   console.log(`  Tools:  ${demoTools.map(t => t.name).join(', ')}`);
 
   // LLM-only pipeline with tools - client handles STT and TTS
-  const pipeline = new VoicePipeline({
-    stt: null,  // Client does WebSpeech STT
-    llm: () => new CloudLLM(CONFIG.llm),
-    tts: null,  // Client does WebSpeech TTS
-    systemPrompt: CONFIG.systemPrompt,
+  const pipeline = createVoicePipeline({
+    create: () => ({
+      stt: null,  // Client does WebSpeech STT
+      llm: new CloudLLM(CONFIG.llm),
+      tts: null,  // Client does WebSpeech TTS
+      systemPrompt: CONFIG.systemPrompt,
+    }),
     tools: demoTools,
   });
 

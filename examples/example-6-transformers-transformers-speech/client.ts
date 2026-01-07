@@ -24,13 +24,15 @@ import {
 // ============ Config ============
 
 const client = createVoiceClient({
-  // Server handles STT - client sends audio
-  stt: null,
-  // Server handles LLM
-  llm: null,
-  // Local TTS - speaks response text from server
-  tts: new WebSpeechTTS({ voiceName: 'Samantha', rate: 1.1 }),
-  serverUrl: 'ws://localhost:3103',
+  create: () => ({
+    // Server handles STT - client sends audio
+    stt: null,
+    // Server handles LLM
+    llm: null,
+    // Local TTS - speaks response text from server
+    tts: new WebSpeechTTS({ voiceName: 'Samantha', rate: 1.1 }),
+    serverUrl: 'ws://localhost:3103',
+  }),
 });
 
 // ============ UI Setup ============

@@ -21,13 +21,15 @@ import {
 // ============ Config ============
 
 const client = createVoiceClient({
-  // Server handles STT (native whisper.cpp)
-  stt: null,
-  // Server handles LLM (Transformers.js)
-  llm: null,
-  // Local TTS - browser WebSpeech
-  tts: new WebSpeechTTS({ voiceName: 'Samantha', rate: 1.1 }),
-  serverUrl: 'ws://localhost:3102', // Points to mixed server
+  create: () => ({
+    // Server handles STT (native whisper.cpp)
+    stt: null,
+    // Server handles LLM (Transformers.js)
+    llm: null,
+    // Local TTS - browser WebSpeech
+    tts: new WebSpeechTTS({ voiceName: 'Samantha', rate: 1.1 }),
+    serverUrl: 'ws://localhost:3102', // Points to mixed server
+  }),
 });
 
 // ============ UI Setup ============

@@ -5,7 +5,7 @@
  * Client sends audio, server returns audio.
  */
 
-import { VoicePipeline } from 'modular-voice-agent-sdk';
+import { createVoicePipeline } from 'modular-voice-agent-sdk';
 import { NativeSTT, NativeLLM, NativeTTS, getBinaryPath, getModelPath, getCacheDir } from 'modular-voice-agent-sdk/native';
 import { createPipelineHandler } from 'modular-voice-agent-sdk/server';
 import { startWebSocketServer, logPipelineInfo } from '../shared';
@@ -42,11 +42,13 @@ async function main(): Promise<void> {
   console.log(`  Llama:        ${CONFIG.llm.binaryPath}`);
   console.log(`  Sherpa-ONNX:  ${CONFIG.tts.binaryPath}`);
 
-  const pipeline = new VoicePipeline({
-    stt: () => new NativeSTT(CONFIG.stt),
-    llm: () => new NativeLLM(CONFIG.llm),
-    tts: () => new NativeTTS(CONFIG.tts),
-    systemPrompt: CONFIG.systemPrompt,
+  const pipeline = createVoicePipeline({
+    create: () => ({
+      stt: new NativeSTT(CONFIG.stt),
+      llm: new NativeLLM(CONFIG.llm),
+      tts: new NativeTTS(CONFIG.tts),
+      systemPrompt: CONFIG.systemPrompt,
+    }),
   });
 
   await pipeline.initialize();

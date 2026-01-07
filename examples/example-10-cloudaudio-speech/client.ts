@@ -16,7 +16,6 @@
  */
 
 import {
-  VoiceClient,
   createVoiceClient,
   WebSpeechTTS,
 } from 'modular-voice-agent-sdk/client';
@@ -32,13 +31,15 @@ import {
 // ============ Config ============
 
 const client = createVoiceClient({
-  // No local STT - server handles audio directly with multimodal LLM
-  stt: null,
-  // Server LLM - CloudAudioLLM processes audio directly
-  llm: null,
-  // Local TTS - speaks response text from server
-  tts: new WebSpeechTTS({ voiceName: 'Samantha', rate: 1.1 }),
-  serverUrl: 'ws://localhost:3107',
+  create: () => ({
+    // No local STT - server handles audio directly with multimodal LLM
+    stt: null,
+    // Server LLM - CloudAudioLLM processes audio directly
+    llm: null,
+    // Local TTS - speaks response text from server
+    tts: new WebSpeechTTS({ voiceName: 'Samantha', rate: 1.1 }),
+    serverUrl: 'ws://localhost:3107',
+  }),
 });
 
 // ============ UI Setup ============

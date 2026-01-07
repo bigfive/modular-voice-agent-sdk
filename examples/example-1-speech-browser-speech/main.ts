@@ -55,18 +55,20 @@ if (!support.webSpeechSTTUsable) {
 // ============ Config ============
 
 const client = createVoiceClient({
-  // All components are local - no server needed!
-  stt: new WebSpeechSTT({ language: 'en-US' }),
-  llm: new TransformersLLM({
-    model: 'HuggingFaceTB/SmolLM2-360M-Instruct',
-    dtype: 'q4',
-    maxNewTokens: 140,
-    temperature: 0.7,
-    device: 'webgpu',
+  create: () => ({
+    // All components are local - no server needed!
+    stt: new WebSpeechSTT({ language: 'en-US' }),
+    llm: new TransformersLLM({
+      model: 'HuggingFaceTB/SmolLM2-360M-Instruct',
+      dtype: 'q4',
+      maxNewTokens: 140,
+      temperature: 0.7,
+      device: 'webgpu',
+    }),
+    tts: new WebSpeechTTS({ voiceName: 'Samantha', rate: 1.1 }),
+    systemPrompt: 'You are a helpful voice assistant. Keep responses brief—1-2 sentences. Speak naturally.',
+    // Note: no serverUrl needed!
   }),
-  tts: new WebSpeechTTS({ voiceName: 'Samantha', rate: 1.1 }),
-  systemPrompt: 'You are a helpful voice assistant. Keep responses brief—1-2 sentences. Speak naturally.',
-  // Note: no serverUrl needed!
 });
 
 // ============ UI Setup ============

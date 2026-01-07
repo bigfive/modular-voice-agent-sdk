@@ -56,14 +56,17 @@ export type VoiceClientStatus =
   | 'processing'
   | 'speaking';
 
-export interface VoiceClientConfig {
+/**
+ * Components returned by the client factory
+ */
+export interface ClientComponents {
   /**
    * STT backend - runs locally in browser
    * - Provide an STTPipeline (e.g., TransformersSTT) or WebSpeechSTT for local STT
    * - Set to null to use server-side STT (requires serverUrl)
    * @default null (server handles)
    */
-  stt?: STTPipeline | WebSpeechSTT | null;
+  stt: STTPipeline | WebSpeechSTT | null;
 
   /**
    * LLM backend - runs locally in browser
@@ -71,7 +74,7 @@ export interface VoiceClientConfig {
    * - Set to null to use server-side LLM (requires serverUrl)
    * @default null (server handles)
    */
-  llm?: LLMPipeline | null;
+  llm: LLMPipeline | null;
 
   /**
    * TTS backend - runs locally in browser
@@ -79,7 +82,7 @@ export interface VoiceClientConfig {
    * - Set to null to use server-side TTS (requires serverUrl)
    * @default null (server handles)
    */
-  tts?: TTSPipeline | WebSpeechTTS | null;
+  tts: TTSPipeline | WebSpeechTTS | null;
 
   /**
    * System prompt for the LLM (required if llm is provided)
@@ -90,6 +93,31 @@ export interface VoiceClientConfig {
    * WebSocket server URL (required if any component is null)
    */
   serverUrl?: string;
+}
+
+/**
+ * Factory function that creates client components
+ */
+export type ClientComponentFactory = () => ClientComponents;
+
+export interface VoiceClientConfig {
+  /**
+   * Factory that creates components.
+   * Called once during client construction.
+   *
+   * @example
+   * ```typescript
+   * createVoiceClient({
+   *   create: () => ({
+   *     stt: null,
+   *     llm: null,
+   *     tts: new WebSpeechTTS(),
+   *     serverUrl: 'ws://localhost:3100',
+   *   }),
+   * });
+   * ```
+   */
+  create: ClientComponentFactory;
 
   /**
    * Audio sample rate for recording (default: 16000)
@@ -257,13 +285,16 @@ export class VoiceClient {
 
 
   constructor(config: VoiceClientConfig) {
+    // Get components from factory
+    const components = config.create();
+
     // Check browser support first
-    this.validateBrowserSupport(config);
+    this.validateBrowserSupport(components);
 
     // Determine what's local vs remote
-    const hasLocalSTT = config.stt !== undefined && config.stt !== null;
-    const hasLocalLLM = config.llm !== undefined && config.llm !== null;
-    const hasLocalTTS = config.tts !== undefined && config.tts !== null;
+    const hasLocalSTT = components.stt !== null;
+    const hasLocalLLM = components.llm !== null;
+    const hasLocalTTS = components.tts !== null;
 
     this.needsServer = !hasLocalSTT || !hasLocalLLM || !hasLocalTTS;
 
@@ -276,14 +307,14 @@ export class VoiceClient {
     }
 
     // Validate config
-    if (this.needsServer && !config.serverUrl) {
+    if (this.needsServer && !components.serverUrl) {
       throw new Error(
         'serverUrl is required when any component (stt, llm, tts) is null. ' +
         'Either provide all components for fully-local mode, or specify a serverUrl.'
       );
     }
 
-    if (hasLocalLLM && !config.systemPrompt) {
+    if (hasLocalLLM && !components.systemPrompt) {
       throw new Error('systemPrompt is required when using a local LLM');
     }
 
@@ -291,14 +322,14 @@ export class VoiceClient {
       sampleRate: config.sampleRate ?? 16000,
       autoReconnect: config.autoReconnect ?? true,
       reconnectDelay: config.reconnectDelay ?? 2000,
-      serverUrl: config.serverUrl,
-      systemPrompt: config.systemPrompt ?? '',
+      serverUrl: components.serverUrl,
+      systemPrompt: components.systemPrompt ?? '',
     };
 
     // Store local components
-    if (hasLocalSTT) this.localSTT = config.stt!;
-    if (hasLocalLLM) this.localLLM = config.llm!;
-    if (hasLocalTTS) this.localTTS = config.tts!;
+    if (hasLocalSTT) this.localSTT = components.stt;
+    if (hasLocalLLM) this.localLLM = components.llm;
+    if (hasLocalTTS) this.localTTS = components.tts;
 
     // Set up based on mode
     this.setupComponents();
@@ -344,12 +375,14 @@ export class VoiceClient {
       const sttForPipeline = isWebSpeechSTT(this.localSTT) ? null : (this.localSTT as STTPipeline);
       const ttsForPipeline = isWebSpeechTTS(this.localTTS) ? null : (this.localTTS as TTSPipeline);
 
-      // Wrap instances in factory functions (they return the same instance since we're in local mode)
+      // Use the new single-factory pattern
       this.localPipeline = new VoicePipeline({
-        stt: sttForPipeline ? () => sttForPipeline : null,
-        llm: () => this.localLLM!,
-        tts: ttsForPipeline ? () => ttsForPipeline : null,
-        systemPrompt: this.config.systemPrompt,
+        create: () => ({
+          stt: sttForPipeline,
+          llm: this.localLLM!,
+          tts: ttsForPipeline,
+          systemPrompt: this.config.systemPrompt,
+        }),
       });
     }
   }
@@ -963,11 +996,11 @@ export class VoiceClient {
     }, this.config.reconnectDelay);
   }
 
-  private validateBrowserSupport(config: VoiceClientConfig): void {
+  private validateBrowserSupport(components: ClientComponents): void {
     const support = VoiceClient.getBrowserSupport();
 
     // Check WebSpeech STT if trying to use it
-    if (config.stt instanceof WebSpeechSTT) {
+    if (components.stt instanceof WebSpeechSTT) {
       if (!support.webSpeechSTT) {
         throw new Error(
           'WebSpeech STT is not supported in this browser.\n\n' +
@@ -983,7 +1016,7 @@ export class VoiceClient {
     }
 
     // Check WebSpeech TTS if trying to use it
-    if (config.tts instanceof WebSpeechTTS) {
+    if (components.tts instanceof WebSpeechTTS) {
       if (!support.webSpeechTTS) {
         throw new Error(
           'WebSpeech TTS is not supported in this browser.\n\n' +
@@ -995,7 +1028,7 @@ export class VoiceClient {
     }
 
     // Check MediaDevices for any STT (local or server)
-    const needsMicrophone = config.stt !== undefined || config.stt === null;
+    const needsMicrophone = components.stt !== undefined || components.stt === null;
     if (needsMicrophone && !support.mediaDevices) {
       throw new Error(
         'Microphone access (MediaDevices API) is not available.\n' +
@@ -1007,7 +1040,7 @@ export class VoiceClient {
     }
 
     // Check WebSocket if using server
-    if (config.serverUrl && !support.webSocket) {
+    if (components.serverUrl && !support.webSocket) {
       throw new Error('WebSocket is not supported in this browser.');
     }
 
@@ -1025,28 +1058,45 @@ export class VoiceClient {
 
 /**
  * Create a VoiceClient instance
+ *
  * @example
+ * ```typescript
  * // Fully local
  * const client = createVoiceClient({
- *   stt: new TransformersSTT({ model: '...' }),
- *   llm: new TransformersLLM({ model: '...' }),
- *   tts: new WebSpeechTTS(),
- *   systemPrompt: 'You are a helpful assistant.',
+ *   create: () => ({
+ *     stt: new TransformersSTT({ model: '...' }),
+ *     llm: new TransformersLLM({ model: '...' }),
+ *     tts: new WebSpeechTTS(),
+ *     systemPrompt: 'You are a helpful assistant.',
+ *   }),
  * });
+ * ```
  *
  * @example
+ * ```typescript
  * // Fully remote
  * const client = createVoiceClient({
- *   serverUrl: 'ws://localhost:3000',
+ *   create: () => ({
+ *     stt: null,
+ *     llm: null,
+ *     tts: null,
+ *     serverUrl: 'ws://localhost:3000',
+ *   }),
  * });
+ * ```
  *
  * @example
- * // Hybrid: local STT/TTS, server LLM
+ * ```typescript
+ * // Hybrid: local TTS, server STT/LLM
  * const client = createVoiceClient({
- *   stt: new WebSpeechSTT(),
- *   tts: new WebSpeechTTS(),
- *   serverUrl: 'ws://localhost:3000',
+ *   create: () => ({
+ *     stt: null,
+ *     llm: null,
+ *     tts: new WebSpeechTTS(),
+ *     serverUrl: 'ws://localhost:3000',
+ *   }),
  * });
+ * ```
  */
 export function createVoiceClient(config: VoiceClientConfig): VoiceClient {
   return new VoiceClient(config);

@@ -34,20 +34,56 @@ const DEFAULT_TOOL_FILLER_PHRASES = [
   'Let me look that up.',
 ];
 
-/** Factory function that creates a backend instance */
-export type BackendFactory<T> = () => T;
+// ============ Types ============
 
-export interface VoicePipelineConfig {
-  /** STT backend factory (optional if client does local STT) */
-  stt?: BackendFactory<STTPipeline> | null;
-  /** LLM backend factory (required) */
-  llm: BackendFactory<LLMPipeline>;
-  /** TTS backend factory (optional if client does local TTS) */
-  tts?: BackendFactory<TTSPipeline> | null;
+/**
+ * Components returned by the factory - created fresh for each session
+ */
+export interface PipelineComponents {
+  /** STT backend instance (null if client handles STT) */
+  stt: STTPipeline | null;
+  /** LLM backend instance (required) */
+  llm: LLMPipeline;
+  /** TTS backend instance (null if client handles TTS) */
+  tts: TTSPipeline | null;
   /** System prompt for the LLM */
   systemPrompt: string;
-  /** Registered tools for function calling */
+}
+
+/**
+ * Factory function that creates pipeline components.
+ * Called once during initialize() to warm cache, then once per session.
+ */
+export type ComponentFactory = () => PipelineComponents;
+
+/**
+ * Pipeline configuration
+ */
+export interface VoicePipelineConfig {
+  /**
+   * Factory that creates components for each session.
+   * Called once during initialize() to warm the cache,
+   * then called again for each new session to create isolated instances.
+   *
+   * @example
+   * ```typescript
+   * createVoicePipeline({
+   *   create: () => ({
+   *     stt: new NativeSTT({ model: 'base.en' }),
+   *     llm: new CloudLLM({ model: 'gpt-5-mini' }),
+   *     tts: null,
+   *     systemPrompt: 'You are a helpful assistant.',
+   *   }),
+   * });
+   * ```
+   */
+  create: ComponentFactory;
+
+  /**
+   * Registered tools for function calling (shared across sessions)
+   */
   tools?: Tool[];
+
   /**
    * Filler phrases to say while executing tools.
    * Set to empty array to disable filler phrases.
@@ -77,7 +113,7 @@ export interface ConversationContext {
 }
 
 /**
- * Session backends - per-session instances created from factories
+ * Session backends - per-session instances created from factory
  */
 export interface SessionBackends {
   stt: STTPipeline | null;
@@ -85,18 +121,15 @@ export interface SessionBackends {
   tts: TTSPipeline | null;
 }
 
+// ============ VoicePipeline Class ============
+
 export class VoicePipeline {
-  // Factories for creating per-session instances
-  private sttFactory: BackendFactory<STTPipeline> | null;
-  private llmFactory: BackendFactory<LLMPipeline>;
-  private ttsFactory: BackendFactory<TTSPipeline> | null;
+  // Factory for creating per-session instances
+  private factory: ComponentFactory;
 
-  // Internal backends for pipeline's own use (e.g., local/browser mode)
-  private stt: STTPipeline | null = null;
-  private llm: LLMPipeline | null = null;
-  private tts: TTSPipeline | null = null;
+  // Internal components for pipeline's own use (e.g., local/browser mode)
+  private components: PipelineComponents | null = null;
 
-  private systemPrompt: string;
   private textNormalizer = new TextNormalizer();
   private tools: Map<string, Tool> = new Map();
   private toolDefinitions: ToolDefinition[] = [];
@@ -107,10 +140,7 @@ export class VoicePipeline {
   private initialized = false;
 
   constructor(config: VoicePipelineConfig) {
-    this.sttFactory = config.stt ?? null;
-    this.llmFactory = config.llm;
-    this.ttsFactory = config.tts ?? null;
-    this.systemPrompt = config.systemPrompt;
+    this.factory = config.create;
     this.toolFillerPhrases = config.toolFillerPhrases ?? DEFAULT_TOOL_FILLER_PHRASES;
 
     // Register tools
@@ -152,44 +182,39 @@ export class VoicePipeline {
    * Get the system prompt (for initializing conversation history)
    */
   getSystemPrompt(): string {
-    return this.systemPrompt;
+    return this.components?.systemPrompt ?? '';
   }
 
   /**
    * Create initial history with system prompt
    */
   createInitialHistory(): Message[] {
-    return [{ role: 'system', content: this.systemPrompt }];
+    const prompt = this.getSystemPrompt();
+    return prompt ? [{ role: 'system', content: prompt }] : [];
   }
 
   /**
    * Initialize the pipeline by warming the model cache.
-   * Creates instances and initializes them, which loads models into cache.
+   * Creates instances via factory and initializes them, which loads models into cache.
    * These instances are also stored for the pipeline's own use (local/browser mode).
    * Subsequent session instances will initialize instantly from cache.
    */
   async initialize(onProgress?: ProgressCallback): Promise<void> {
-    // Create instances - these warm the cache and are kept for pipeline's own use
-    // Handle special case: if stt and llm use the same factory (e.g., CloudAudioLLM),
-    // create one instance and use it for both
-    if (this.hasSameSTTAndLLM()) {
-      const sharedInstance = this.llmFactory();
-      this.stt = sharedInstance as unknown as STTPipeline;
-      this.llm = sharedInstance;
-    } else {
-      this.stt = this.sttFactory?.() ?? null;
-      this.llm = this.llmFactory();
-    }
-    this.tts = this.ttsFactory?.() ?? null;
+    // Create components via factory - these warm the cache and are kept for pipeline's own use
+    this.components = this.factory();
 
-    const promises: Promise<void>[] = [this.llm.initialize(onProgress)];
+    // Check if STT and LLM are the same instance (e.g., CloudAudioLLM)
+    const sameSTTAndLLM = this.components.stt !== null &&
+      (this.components.stt as unknown) === (this.components.llm as unknown);
+
+    const promises: Promise<void>[] = [this.components.llm.initialize(onProgress)];
 
     // Only initialize STT separately if it's a different instance
-    if (this.stt && !this.hasSameSTTAndLLM()) {
-      promises.push(this.stt.initialize(onProgress));
+    if (this.components.stt && !sameSTTAndLLM) {
+      promises.push(this.components.stt.initialize(onProgress));
     }
-    if (this.tts) {
-      promises.push(this.tts.initialize(onProgress));
+    if (this.components.tts) {
+      promises.push(this.components.tts.initialize(onProgress));
     }
 
     await Promise.all(promises);
@@ -213,53 +238,53 @@ export class VoicePipeline {
       throw new Error('VoicePipeline not initialized. Call initialize() first.');
     }
 
-    // Create fresh instances for this session
-    // Handle special case: if stt and llm use the same factory, share the instance
-    let stt: STTPipeline | null;
-    let llm: LLMPipeline;
+    // Create fresh components for this session via factory
+    const components = this.factory();
 
-    if (this.hasSameSTTAndLLM()) {
-      const sharedInstance = this.llmFactory();
-      stt = sharedInstance as unknown as STTPipeline;
-      llm = sharedInstance;
-    } else {
-      stt = this.sttFactory?.() ?? null;
-      llm = this.llmFactory();
-    }
-    const tts = this.ttsFactory?.() ?? null;
+    // Check if STT and LLM are the same instance (e.g., CloudAudioLLM)
+    const sameSTTAndLLM = components.stt !== null &&
+      (components.stt as unknown) === (components.llm as unknown);
 
     // Initialize (fast - uses cache)
-    const promises: Promise<void>[] = [llm.initialize()];
+    const promises: Promise<void>[] = [components.llm.initialize()];
     // Only initialize STT separately if it's a different instance
-    if (stt && !this.hasSameSTTAndLLM()) {
-      promises.push(stt.initialize());
+    if (components.stt && !sameSTTAndLLM) {
+      promises.push(components.stt.initialize());
     }
-    if (tts) promises.push(tts.initialize());
+    if (components.tts) {
+      promises.push(components.tts.initialize());
+    }
     await Promise.all(promises);
 
-    return { stt, llm, tts };
+    return {
+      stt: components.stt,
+      llm: components.llm,
+      tts: components.tts,
+    };
   }
 
   /**
-   * Check if this pipeline has the same factory for STT and LLM.
+   * Check if this pipeline has STT and LLM as the same instance.
    * Used by handlers to detect CloudAudioLLM pattern where one instance serves both roles.
    */
   hasSameSTTAndLLM(): boolean {
-    return this.sttFactory !== null && (this.sttFactory as unknown) === (this.llmFactory as unknown);
+    if (!this.components) return false;
+    return this.components.stt !== null &&
+      (this.components.stt as unknown) === (this.components.llm as unknown);
   }
 
   /**
    * Check if pipeline has STT configured
    */
   hasSTT(): boolean {
-    return this.sttFactory !== null;
+    return this.components?.stt !== null;
   }
 
   /**
    * Check if pipeline has TTS configured
    */
   hasTTS(): boolean {
-    return this.ttsFactory !== null;
+    return this.components?.tts !== null;
   }
 
   /**
@@ -273,8 +298,8 @@ export class VoicePipeline {
     callbacks: Omit<VoicePipelineCallbacks, 'onTranscript'>,
     backends?: SessionBackends
   ): Promise<Message[]> {
-    const llm = backends?.llm ?? this.llm;
-    const tts = backends?.tts ?? this.tts;
+    const llm = backends?.llm ?? this.components?.llm;
+    const tts = backends?.tts ?? this.components?.tts ?? null;
 
     if (!llm) {
       callbacks.onError(new Error('Pipeline not initialized. Call initialize() first.'));
@@ -318,11 +343,11 @@ export class VoicePipeline {
     callbacks: VoicePipelineCallbacks,
     backends?: SessionBackends
   ): Promise<Message[]> {
-    const stt = backends?.stt ?? this.stt;
-    const llm = backends?.llm ?? this.llm;
-    const tts = backends?.tts ?? this.tts;
+    const stt = backends?.stt ?? this.components?.stt;
+    const llm = backends?.llm ?? this.components?.llm;
+    const tts = backends?.tts ?? this.components?.tts ?? null;
 
-    if (!this.sttFactory) {
+    if (!this.components?.stt && !backends?.stt) {
       callbacks.onError(new Error('No STT backend configured. Use processText() instead.'));
       return [];
     }
@@ -658,4 +683,45 @@ export class VoicePipeline {
 
     return undefined;
   }
+}
+
+// ============ Factory Function ============
+
+/**
+ * Create a VoicePipeline instance
+ *
+ * @example
+ * ```typescript
+ * // Server with STT + LLM, client handles TTS
+ * const pipeline = createVoicePipeline({
+ *   create: () => ({
+ *     stt: new NativeSTT({ model: 'base.en' }),
+ *     llm: new CloudLLM({ model: 'gpt-5-mini', apiKey: '...' }),
+ *     tts: null,
+ *     systemPrompt: 'You are a helpful assistant.',
+ *   }),
+ *   tools: [weatherTool, calendarTool],
+ * });
+ *
+ * await pipeline.initialize();
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // CloudAudioLLM - same instance for STT and LLM
+ * const pipeline = createVoicePipeline({
+ *   create: () => {
+ *     const audioLLM = new CloudAudioLLM({ model: 'gpt-4o-audio-preview' });
+ *     return {
+ *       stt: audioLLM,
+ *       llm: audioLLM,
+ *       tts: null,
+ *       systemPrompt: 'You are a helpful assistant.',
+ *     };
+ *   },
+ * });
+ * ```
+ */
+export function createVoicePipeline(config: VoicePipelineConfig): VoicePipeline {
+  return new VoicePipeline(config);
 }
