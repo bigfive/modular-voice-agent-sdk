@@ -3,19 +3,11 @@
  * Models and binaries are stored in ~/.cache/mvas/ by default
  *
  * NOTE: This module uses Node.js APIs (os, path) and is SERVER-ONLY.
- * For browser-safe caching, use cache-runtime.ts instead.
+ * For browser model caching, use the ModelStore passed to backend constructors.
  */
 
 import { homedir } from 'os';
 import { join } from 'path';
-
-// Re-export browser-safe runtime cache functions
-export {
-  getCachedOrLoad,
-  isCached,
-  clearCached,
-  clearAllCached,
-} from './cache-runtime';
 
 /**
  * Get the cache directory for mvas assets.

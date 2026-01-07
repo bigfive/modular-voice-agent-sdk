@@ -55,7 +55,7 @@ if (!support.webSpeechSTTUsable) {
 // ============ Config ============
 
 const client = createVoiceClient({
-  create: (/* modelStore */) => ({
+  create: (modelStore) => ({
     // All components are local - no server needed!
     stt: new WebSpeechSTT({ language: 'en-US' }),
     llm: new TransformersLLM({
@@ -64,7 +64,7 @@ const client = createVoiceClient({
       maxNewTokens: 140,
       temperature: 0.7,
       device: 'webgpu',
-    }),
+    }, modelStore),
     tts: new WebSpeechTTS({ voiceName: 'Samantha', rate: 1.1 }),
     systemPrompt: 'You are a helpful voice assistant. Keep responses brief—1-2 sentences. Speak naturally.',
     // Note: no serverUrl needed!

@@ -52,19 +52,19 @@ if (!support.webSpeechTTS) {
 // ============ Config ============
 
 const client = createVoiceClient({
-  create: (/* modelStore */) => ({
+  create: (modelStore) => ({
     // All components are local - no server needed!
     stt: new TransformersSTT({
       model: 'Xenova/whisper-tiny.en',
       dtype: 'q8',
-    }),
+    }, modelStore),
     llm: new TransformersLLM({
       model: 'HuggingFaceTB/SmolLM2-360M-Instruct',
       dtype: 'q4',
       maxNewTokens: 140,
       temperature: 0.7,
       device: 'webgpu',
-    }),
+    }, modelStore),
     tts: new WebSpeechTTS({ voiceName: 'Samantha', rate: 1.1 }),
     systemPrompt: 'You are a helpful voice assistant. Keep responses brief—1-2 sentences. Speak naturally.',
     // Note: no serverUrl needed!

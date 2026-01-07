@@ -22,12 +22,11 @@ import type {
   ToolDefinition,
 } from '../../types';
 import { LLMLogger, LLMConversationTracker, type TrackerMessage } from '../../services';
-import { getCachedOrLoad } from '../../cache-runtime';
 import type { ModelStore } from '../../voice-pipeline';
 
 export class TransformersLLM implements LLMPipeline {
   private config: TransformersLLMConfig;
-  private modelStore?: ModelStore;
+  private modelStore: ModelStore;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private pipe: any = null;
   private ready = false;
@@ -35,10 +34,10 @@ export class TransformersLLM implements LLMPipeline {
 
   /**
    * @param config - LLM configuration
-   * @param modelStore - Optional pipeline-scoped model store for caching.
-   *   If provided, uses this instead of global cache. Recommended for production.
+   * @param modelStore - Pipeline-scoped model store for caching.
+   *   Models are cached here and shared across sessions within the same pipeline.
    */
-  constructor(config: TransformersLLMConfig, modelStore?: ModelStore) {
+  constructor(config: TransformersLLMConfig, modelStore: ModelStore) {
     this.config = config;
     this.modelStore = modelStore;
     this.tracker = new LLMConversationTracker(new LLMLogger());
@@ -47,32 +46,17 @@ export class TransformersLLM implements LLMPipeline {
   async initialize(onProgress?: ProgressCallback): Promise<void> {
     const cacheKey = `transformers-llm:${this.config.model}:${this.config.dtype}:${this.config.device ?? 'default'}`;
 
-    // Use pipeline-scoped store if provided, otherwise fall back to global cache
-    if (this.modelStore) {
-      if (this.modelStore.has(cacheKey)) {
-        this.pipe = this.modelStore.get(cacheKey);
-      } else {
-        console.log(`Loading LLM model (${this.config.model})...`);
-        this.pipe = await pipeline('text-generation', this.config.model, {
-          dtype: this.config.dtype as 'fp32' | 'fp16' | 'q8' | 'q4',
-          device: this.config.device,
-          progress_callback: onProgress,
-        });
-        console.log('LLM model loaded.');
-        this.modelStore.set(cacheKey, this.pipe);
-      }
+    if (this.modelStore.has(cacheKey)) {
+      this.pipe = this.modelStore.get(cacheKey);
     } else {
-      // Fallback to global cache for backwards compatibility
-      this.pipe = await getCachedOrLoad(cacheKey, async () => {
-        console.log(`Loading LLM model (${this.config.model})...`);
-        const pipe = await pipeline('text-generation', this.config.model, {
-          dtype: this.config.dtype as 'fp32' | 'fp16' | 'q8' | 'q4',
-          device: this.config.device,
-          progress_callback: onProgress,
-        });
-        console.log('LLM model loaded.');
-        return pipe;
+      console.log(`Loading LLM model (${this.config.model})...`);
+      this.pipe = await pipeline('text-generation', this.config.model, {
+        dtype: this.config.dtype as 'fp32' | 'fp16' | 'q8' | 'q4',
+        device: this.config.device,
+        progress_callback: onProgress,
       });
+      console.log('LLM model loaded.');
+      this.modelStore.set(cacheKey, this.pipe);
     }
 
     this.ready = true;
