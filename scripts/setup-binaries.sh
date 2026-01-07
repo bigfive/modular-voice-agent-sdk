@@ -1,19 +1,19 @@
 #!/bin/bash
 #
-# Setup native binaries for voice-pipeline
-# Binaries are stored in ~/.cache/voice-pipeline/bin/
+# Setup native binaries for modular-voice-agent-sdk
+# Binaries are stored in ~/.cache/mvas/bin/
 #
-# Usage: npx voice-pipeline setup --binaries-only
+# Usage: npx mvas setup --binaries-only
 #
 
 set -e
 
 # Use global cache directory
-CACHE_DIR="${VOICE_PIPELINE_CACHE:-$HOME/.cache/voice-pipeline}"
+CACHE_DIR="${MVAS_CACHE:-$HOME/.cache/mvas}"
 BIN_DIR="$CACHE_DIR/bin"
 
-echo "Voice Pipeline - Binary Setup"
-echo "=============================="
+echo "Modular Voice Agent SDK - Binary Setup"
+echo "======================================="
 echo "Binary directory: $BIN_DIR"
 echo ""
 
@@ -147,7 +147,7 @@ if [ -n "$MISSING_BREW" ]; then
   echo "⚠️  Missing dependencies:"
   echo "  brew install$MISSING_BREW"
   echo ""
-  echo "Then re-run: npx voice-pipeline setup --binaries-only"
+  echo "Then re-run: npx mvas setup --binaries-only"
 else
   echo ""
   echo "✅ All binaries set up!"
@@ -155,5 +155,5 @@ fi
 
 echo ""
 echo "You can customize the cache location with:"
-echo "  export VOICE_PIPELINE_CACHE=/path/to/cache"
+echo "  export MVAS_CACHE=/path/to/cache"
 
