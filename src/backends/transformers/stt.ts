@@ -27,10 +27,8 @@ export class TransformersSTT implements STTPipeline {
   }
 
   async initialize(onProgress?: ProgressCallback): Promise<void> {
-    const cacheKey = `transformers-stt:${this.config.model}:${this.config.dtype}:${this.config.device ?? 'default'}`;
-
-    if (this.modelStore.has(cacheKey)) {
-      this.pipe = this.modelStore.get(cacheKey);
+    if (this.modelStore.has('stt')) {
+      this.pipe = this.modelStore.get('stt');
     } else {
       console.log(`Loading STT model (${this.config.model})...`);
       this.pipe = await pipeline('automatic-speech-recognition', this.config.model, {
@@ -39,7 +37,7 @@ export class TransformersSTT implements STTPipeline {
         progress_callback: onProgress,
       });
       console.log('STT model loaded.');
-      this.modelStore.set(cacheKey, this.pipe);
+      this.modelStore.set('stt', this.pipe);
     }
 
     this.ready = true;

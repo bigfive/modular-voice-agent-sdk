@@ -12,12 +12,12 @@ Each `VoicePipeline` and `VoiceClient` now owns its own model store (`Map<string
    ```typescript
    export class VoicePipeline {
      private modelStore: ModelStore = new Map();
-     
+
      async initialize() {
        // Factory receives store - first call populates cache
        this.components = this.factory(this.modelStore);
      }
-     
+
      async createSessionBackends() {
        // Same store passed - finds cached models
        const components = this.factory(this.modelStore);
@@ -43,10 +43,10 @@ Each `VoicePipeline` and `VoiceClient` now owns its own model store (`Map<string
      constructor(config: TransformersLLMConfig, modelStore: ModelStore) {
        this.modelStore = modelStore;  // Required!
      }
-   
+
      async initialize() {
        const cacheKey = `transformers-llm:${model}:${dtype}:${device}`;
-       
+
        if (this.modelStore.has(cacheKey)) {
          this.pipe = this.modelStore.get(cacheKey);
        } else {

@@ -44,10 +44,8 @@ export class TransformersLLM implements LLMPipeline {
   }
 
   async initialize(onProgress?: ProgressCallback): Promise<void> {
-    const cacheKey = `transformers-llm:${this.config.model}:${this.config.dtype}:${this.config.device ?? 'default'}`;
-
-    if (this.modelStore.has(cacheKey)) {
-      this.pipe = this.modelStore.get(cacheKey);
+    if (this.modelStore.has('llm')) {
+      this.pipe = this.modelStore.get('llm');
     } else {
       console.log(`Loading LLM model (${this.config.model})...`);
       this.pipe = await pipeline('text-generation', this.config.model, {
@@ -56,7 +54,7 @@ export class TransformersLLM implements LLMPipeline {
         progress_callback: onProgress,
       });
       console.log('LLM model loaded.');
-      this.modelStore.set(cacheKey, this.pipe);
+      this.modelStore.set('llm', this.pipe);
     }
 
     this.ready = true;

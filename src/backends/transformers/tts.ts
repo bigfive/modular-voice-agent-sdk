@@ -28,10 +28,8 @@ export class TransformersTTS implements TTSPipeline {
   }
 
   async initialize(onProgress?: ProgressCallback): Promise<void> {
-    const cacheKey = `transformers-tts:${this.config.model}:${this.config.dtype}:${this.config.device ?? 'default'}`;
-
-    if (this.modelStore.has(cacheKey)) {
-      this.pipe = this.modelStore.get(cacheKey);
+    if (this.modelStore.has('tts')) {
+      this.pipe = this.modelStore.get('tts');
     } else {
       console.log(`Loading TTS model (${this.config.model})...`);
       this.pipe = await pipeline('text-to-speech', this.config.model, {
@@ -40,7 +38,7 @@ export class TransformersTTS implements TTSPipeline {
         progress_callback: onProgress,
       });
       console.log('TTS model loaded.');
-      this.modelStore.set(cacheKey, this.pipe);
+      this.modelStore.set('tts', this.pipe);
     }
 
     this.ready = true;
