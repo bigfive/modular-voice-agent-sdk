@@ -17,6 +17,7 @@ npm run example6  # Server STT+LLM + Browser TTS (port 3103)
 npm run example7  # Native STT + Transformers.js LLM (port 3102)
 npm run example8  # WebSpeech + Cloud LLM (port 3105)
 npm run example9  # Native STT/TTS + Cloud LLM (port 3106)
+npm run example10 # CloudAudioLLM multimodal (port 3107)
 ```
 
 > **Note:** Each server example loads ML models into memory. Run one at a time to avoid exhausting RAM.
@@ -34,6 +35,7 @@ npm run example9  # Native STT/TTS + Cloud LLM (port 3106)
 | 7 | `example-7-native-transformers-speech` | Mixed | Native whisper.cpp → TF.js LLM → WebSpeech TTS |
 | 8 | `example-8-speech-cloud-speech` | Hybrid | WebSpeech STT → Cloud LLM → WebSpeech TTS |
 | 9 | `example-9-native-cloud-native` | Remote | whisper.cpp → Cloud LLM → sherpa-onnx |
+| 10 | `example-10-cloudaudio-speech` | Remote | CloudAudioLLM (multimodal) → WebSpeech TTS |
 
 ## All Possible Configurations
 
@@ -45,6 +47,7 @@ Naming convention: `{stt}-{llm}-{tts}` where each component is:
 | **transformers** | Whisper Transformers.js (server) | TransformersLLM/Phi3 Transformers.js (server) | SpeechT5 Transformers.js (server) |
 | **browser** | Whisper Transformers.js (browser) | TransformersLLM/Phi3 Transformers.js (browser) | ⚠️ No good model yet |
 | **cloud** | ❌ N/A | OpenAI/Ollama/vLLM (server) | ❌ N/A |
+| **cloudaudio** | CloudAudioLLM (multimodal) | CloudAudioLLM (multimodal) | ❌ N/A |
 | **speech** | WebSpeech API (browser) | ❌ N/A | WebSpeech API (browser) |
 
 ### Fully Local (4 combinations)
@@ -129,7 +132,7 @@ Naming convention: `{stt}-{llm}-{tts}` where each component is:
 - **52 total** configurations (with cloud LLM option)
 - **38 currently possible** (✅)
 - **14 waiting on browser TTS model** (⚠️)
-- **9 examples** provided
+- **10 examples** provided
 
 ## Server Ports
 
@@ -142,6 +145,7 @@ Naming convention: `{stt}-{llm}-{tts}` where each component is:
 | example5 (`speech-native-speech`) | 3104 |
 | example8 (`speech-cloud-speech`) | 3105 |
 | example9 (`native-cloud-native`) | 3106 |
+| example10 (`cloudaudio-speech`) | 3107 |
 
 ## Prerequisites
 

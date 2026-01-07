@@ -48,6 +48,9 @@ Each component can run in the browser, on a server, or in the cloud. Pick any fr
               N/A                         ☁️ Cloud LLM                               N/A
                                             (OpenAI, Ollama, vLLM)
 
+              N/A                         ☁️ Cloud Audio LLM                         N/A
+                                            (GPT-4o audio, multimodal)
+
 ```
 
 Want browser speech recognition + a cloud LLM + browser speech synthesis? Done. Want everything running locally on your server with native binaries? Also done. Same code structure, same events, different backends.
@@ -59,11 +62,11 @@ Want browser speech recognition + a cloud LLM + browser speech synthesis? Done. 
 - **Conversation history** — automatic context management
 - **Hybrid configs** — mix browser and server components freely
 
-See [`USAGE.md`](./USAGE.md) for full API documentation.
+See [`docs/USAGE.md`](./docs/USAGE.md) for full API documentation.
 
 ## Examples
 
-See [`examples/`](./examples/) for 10 interactive demos covering all configurations.
+See [`examples/`](./examples/) for interactive demos covering all configurations.
 
 ```bash
 cd examples

@@ -1,6 +1,6 @@
 # Usage Guide
 
-Detailed documentation for modular-voice-agent-sdk. For a quick overview, see [README.md](./README.md).
+Detailed documentation for modular-voice-agent-sdk. For a quick overview, see [README.md](../README.md).
 
 ## Two Ways to Use
 
@@ -33,11 +33,11 @@ const client = createVoiceClient({
   serverUrl: 'ws://localhost:3100',
 });
 
-// Server
+// Server - backends use factory functions for per-session isolation
 const pipeline = new VoicePipeline({
-  stt: new NativeSTT({ model: 'base.en' }),
-  llm: new CloudLLM({ model: 'gpt-4o', ... }),
-  tts: new NativeTTS({ model: 'en_US-amy-medium' }),
+  stt: () => new NativeSTT({ model: 'base.en' }),
+  llm: () => new CloudLLM({ model: 'gpt-4o', ... }),
+  tts: () => new NativeTTS({ model: 'en_US-amy-medium' }),
   systemPrompt: '...',
 });
 ```
@@ -134,22 +134,24 @@ The server-side pipeline that processes audio/text through STT → LLM → TTS.
 
 ### Creating a Pipeline
 
+Backends are passed as factory functions, allowing the pipeline to create isolated instances per session:
+
 ```typescript
 const pipeline = new VoicePipeline({
-  // STT options: JS or native binary, or null if client handles
-  stt: TransformersSTT | NativeSTT | null,
+  // STT factory: JS or native binary, or null if client handles
+  stt: () => new TransformersSTT(...) | () => new NativeSTT(...) | null,
 
-  // LLM options: JS, native binary, or cloud API (required)
-  llm: TransformersLLM | NativeLLM | CloudLLM,
+  // LLM factory: JS, native binary, or cloud API (required)
+  llm: () => new TransformersLLM(...) | () => new NativeLLM(...) | () => new CloudLLM(...),
 
-  // TTS options: JS or native binary, or null if client handles
-  tts: TransformersTTS | NativeTTS | null,
+  // TTS factory: JS or native binary, or null if client handles
+  tts: () => new TransformersTTS(...) | () => new NativeTTS(...) | null,
 
   systemPrompt: string,
   tools?: Tool[],             // optional function calling
 });
 
-await pipeline.initialize();
+await pipeline.initialize();  // Warms model cache for fast session startup
 ```
 
 ### Processing
@@ -238,9 +240,9 @@ const client = createVoiceClient({
 **Server:**
 ```typescript
 const pipeline = new VoicePipeline({
-  stt: new TransformersSTT({ model: 'Xenova/whisper-small', dtype: 'q8' }),
-  llm: new TransformersLLM({ model: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', dtype: 'q4' }),
-  tts: new TransformersTTS({ model: 'Xenova/speecht5_tts', dtype: 'fp16', speakerEmbeddings: '...' }),
+  stt: () => new TransformersSTT({ model: 'Xenova/whisper-small', dtype: 'q8' }),
+  llm: () => new TransformersLLM({ model: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', dtype: 'q4' }),
+  tts: () => new TransformersTTS({ model: 'Xenova/speecht5_tts', dtype: 'fp16', speakerEmbeddings: '...' }),
   systemPrompt: 'You are a helpful voice assistant.',
 });
 ```
@@ -261,7 +263,7 @@ const client = createVoiceClient({
 ```typescript
 const pipeline = new VoicePipeline({
   stt: null,
-  llm: new NativeLLM({ model: 'llama-3.2-1b-instruct-q4_k_m.gguf' }),
+  llm: () => new NativeLLM({ model: 'llama-3.2-1b-instruct-q4_k_m.gguf' }),
   tts: null,
   systemPrompt: 'You are a helpful voice assistant.',
 });
@@ -274,14 +276,14 @@ const pipeline = new VoicePipeline({
 import { CloudLLM } from 'modular-voice-agent-sdk/cloud';
 
 const pipeline = new VoicePipeline({
-  stt: new NativeSTT({ model: 'base.en' }),
-  llm: new CloudLLM({
+  stt: () => new NativeSTT({ model: 'base.en' }),
+  llm: () => new CloudLLM({
     baseUrl: 'https://api.openai.com/v1',
     apiKey: process.env.OPENAI_API_KEY,
     model: 'gpt-4o',
     maxTokens: 256,
   }),
-  tts: new NativeTTS({ model: 'en_US-amy-medium' }),
+  tts: () => new NativeTTS({ model: 'en_US-amy-medium' }),
   systemPrompt: 'You are a helpful voice assistant.',
 });
 ```
@@ -322,7 +324,7 @@ const getWeather: Tool = {
 
 ```typescript
 const pipeline = new VoicePipeline({
-  llm: new CloudLLM({ ... }),
+  llm: () => new CloudLLM({ ... }),
   systemPrompt: 'You are a helpful assistant.',
   tools: [getWeather, getTime, rollDice],
 });
@@ -385,7 +387,7 @@ const tools: Tool[] = [
 ];
 
 const pipeline = new VoicePipeline({
-  llm: new CloudLLM({
+  llm: () => new CloudLLM({
     baseUrl: 'https://api.openai.com/v1',
     apiKey: process.env.OPENAI_API_KEY,
     model: 'gpt-4o',
@@ -517,15 +519,41 @@ new CloudLLM({
 - LMStudio (`http://localhost:1234/v1`)
 - Any OpenAI-compatible endpoint
 
+### CloudAudioLLM
+
+Multimodal audio LLM that handles both STT and LLM in a single API call. Implements both `STTPipeline` and `LLMPipeline` interfaces.
+
+```typescript
+new CloudAudioLLM({
+  baseUrl: 'https://api.openai.com/v1',
+  apiKey: process.env.OPENAI_API_KEY,
+  model: 'gpt-4o-audio-preview',
+  sampleRate: 16000,          // Audio sample rate
+  maxTokens: 256,
+})
+```
+
+Use by passing the same factory to both `stt` and `llm`:
+
+```typescript
+const audioLLM = () => new CloudAudioLLM({ ... });
+const pipeline = new VoicePipeline({
+  stt: audioLLM,
+  llm: audioLLM,  // Same factory - pipeline detects and shares the instance
+  tts: null,
+  systemPrompt: '...',
+});
+```
+
 ## Capability Detection
 
 The server supports automatic capability detection for scenarios where you need one server to handle multiple client types (e.g., during rolling deployments).
 
 ```typescript
 const pipeline = new VoicePipeline({
-  stt: new NativeSTT({ ... }),  // used if client sends audio
-  llm: new NativeLLM({ ... }),
-  tts: new NativeTTS({ ... }),  // skipped if client has local TTS
+  stt: () => new NativeSTT({ ... }),  // used if client sends audio
+  llm: () => new NativeLLM({ ... }),
+  tts: () => new NativeTTS({ ... }),  // skipped if client has local TTS
   systemPrompt: '...',
 });
 ```
@@ -563,5 +591,5 @@ import {
 } from 'modular-voice-agent-sdk/native';
 
 // Cloud backends (server-only)
-import { CloudLLM } from 'modular-voice-agent-sdk/cloud';
+import { CloudLLM, CloudAudioLLM } from 'modular-voice-agent-sdk/cloud';
 ```
