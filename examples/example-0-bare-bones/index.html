@@ -11,10 +11,12 @@
     import { TransformersLLM } from 'modular-voice-agent-sdk';
 
     const client = createVoiceClient({
-      stt: new WebSpeechSTT(),
-      llm: new TransformersLLM({ model: 'HuggingFaceTB/SmolLM2-135M-Instruct', dtype: 'q4', maxNewTokens: 100, temperature: 0.7, device: 'webgpu' }),
-      tts: new WebSpeechTTS(),
-      systemPrompt: 'You are an assistant that answers with single words only',
+      create: (modelStore) => ({
+        stt: new WebSpeechSTT(),
+        llm: new TransformersLLM({ model: 'HuggingFaceTB/SmolLM2-135M-Instruct', dtype: 'q4', maxNewTokens: 100, temperature: 0.7, device: 'webgpu' }, modelStore),
+        tts: new WebSpeechTTS(),
+        systemPrompt: 'You are an assistant that answers with single words only',
+      }),
     });
 
     const button = document.getElementById('talkBtn');
