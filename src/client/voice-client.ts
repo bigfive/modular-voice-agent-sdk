@@ -1085,11 +1085,11 @@ export class VoiceClient {
  *
  * @example
  * ```typescript
- * // Fully local
+ * // Fully local with Transformers
  * const client = createVoiceClient({
- *   create: () => ({
- *     stt: new TransformersSTT({ model: '...' }),
- *     llm: new TransformersLLM({ model: '...' }),
+ *   create: (modelStore) => ({
+ *     stt: new TransformersSTT({ model: '...' }, modelStore),
+ *     llm: new TransformersLLM({ model: '...' }, modelStore),
  *     tts: new WebSpeechTTS(),
  *     systemPrompt: 'You are a helpful assistant.',
  *   }),
