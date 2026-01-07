@@ -49,7 +49,7 @@ Each component can run in the browser, on a server, or in the cloud. Pick any fr
                                             (OpenAI, Ollama, vLLM)
 
               N/A                         ☁️ Cloud Audio LLM                         N/A
-                                            (GPT-4o audio, multimodal)
+                                            (GPT Audio, multimodal)
 
 ```
 

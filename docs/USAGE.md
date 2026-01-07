@@ -36,7 +36,7 @@ const client = createVoiceClient({
 // Server - backends use factory functions for per-session isolation
 const pipeline = new VoicePipeline({
   stt: () => new NativeSTT({ model: 'base.en' }),
-  llm: () => new CloudLLM({ model: 'gpt-4o', ... }),
+  llm: () => new CloudLLM({ model: 'gpt-5-mini', ... }),
   tts: () => new NativeTTS({ model: 'en_US-amy-medium' }),
   systemPrompt: '...',
 });
@@ -280,7 +280,7 @@ const pipeline = new VoicePipeline({
   llm: () => new CloudLLM({
     baseUrl: 'https://api.openai.com/v1',
     apiKey: process.env.OPENAI_API_KEY,
-    model: 'gpt-4o',
+    model: 'gpt-5-mini',
     maxTokens: 256,
   }),
   tts: () => new NativeTTS({ model: 'en_US-amy-medium' }),
@@ -390,7 +390,7 @@ const pipeline = new VoicePipeline({
   llm: () => new CloudLLM({
     baseUrl: 'https://api.openai.com/v1',
     apiKey: process.env.OPENAI_API_KEY,
-    model: 'gpt-4o',
+    model: 'gpt-5-mini',
   }),
   systemPrompt: 'You are a helpful assistant. Use tools when needed.',
   tools,
@@ -506,7 +506,7 @@ Any OpenAI-compatible API.
 new CloudLLM({
   baseUrl: 'https://api.openai.com/v1',
   apiKey: process.env.OPENAI_API_KEY,
-  model: 'gpt-4o',
+  model: 'gpt-5-mini',
   maxTokens: 256,
   temperature: 0.7,
 })
@@ -527,7 +527,7 @@ Multimodal audio LLM that handles both STT and LLM in a single API call. Impleme
 new CloudAudioLLM({
   baseUrl: 'https://api.openai.com/v1',
   apiKey: process.env.OPENAI_API_KEY,
-  model: 'gpt-4o-audio-preview',
+  model: 'gpt-audio-mini',    // or 'gpt-audio' for full model
   sampleRate: 16000,          // Audio sample rate
   maxTokens: 256,
 })

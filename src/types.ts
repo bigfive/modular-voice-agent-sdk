@@ -294,7 +294,7 @@ export interface SherpaOnnxTTSConfig {
 export interface CloudLLMConfig {
   baseUrl: string;           // API base URL (e.g., "https://api.openai.com/v1" or "http://localhost:11434/v1")
   apiKey?: string;           // API key (optional for local servers like Ollama)
-  model: string;             // Model name (e.g., "gpt-4o", "llama3.2")
+  model: string;             // Model name (e.g., "gpt-5-mini", "llama3.2")
   modelParams?: Record<string, unknown>;  // Model-specific params passed to API (e.g., max_tokens, temperature)
 }
 

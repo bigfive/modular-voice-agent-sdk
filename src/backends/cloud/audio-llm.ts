@@ -10,7 +10,7 @@
  *
  * The model is prompted to return both transcription and response in a structured format.
  *
- * Works with: OpenAI GPT-4o-audio-preview, and other audio-capable OpenAI-compatible endpoints.
+ * Works with: OpenAI gpt-audio-mini, gpt-audio, and other audio-capable OpenAI-compatible endpoints.
  */
 
 import type {
