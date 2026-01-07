@@ -13,10 +13,12 @@ import { createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'modular-voice-age
 import { TransformersLLM } from 'modular-voice-agent-sdk';
 
 const client = createVoiceClient({
-  stt: new WebSpeechSTT(),
-  llm: new TransformersLLM({ model: '...' }),
-  tts: new WebSpeechTTS(),
-  systemPrompt: '...',
+  create: (modelStore) => ({
+    stt: new WebSpeechSTT(),
+    llm: new TransformersLLM({ model: '...' }, modelStore),
+    tts: new WebSpeechTTS(),
+    systemPrompt: '...',
+  }),
 });
 ```
 
@@ -27,18 +29,22 @@ Create a `VoiceClient` in the browser and a `VoicePipeline` on the server. Conne
 ```typescript
 // Browser
 const client = createVoiceClient({
-  stt: null,  // server handles
-  llm: null,  // server handles
-  tts: null,  // server handles
-  serverUrl: 'ws://localhost:3100',
+  create: () => ({
+    stt: null,  // server handles
+    llm: null,  // server handles
+    tts: null,  // server handles
+    serverUrl: 'ws://localhost:3100',
+  }),
 });
 
-// Server - backends use factory functions for per-session isolation
-const pipeline = new VoicePipeline({
-  stt: () => new NativeSTT({ model: 'base.en' }),
-  llm: () => new CloudLLM({ model: 'gpt-5-mini', ... }),
-  tts: () => new NativeTTS({ model: 'en_US-amy-medium' }),
-  systemPrompt: '...',
+// Server - factory creates per-session instances, modelStore caches heavy resources
+const pipeline = createVoicePipeline({
+  create: (modelStore) => ({
+    stt: new NativeSTT({ model: 'base.en' }),
+    llm: new CloudLLM({ model: 'gpt-5-mini', ... }),
+    tts: new NativeTTS({ model: 'en_US-amy-medium' }),
+    systemPrompt: '...',
+  }),
 });
 ```
 
@@ -63,20 +69,23 @@ The unified browser SDK for voice interactions.
 
 ```typescript
 const client = createVoiceClient({
-  // STT options: browser speech API, browser/server JS, or server handles
-  stt: WebSpeechSTT | TransformersSTT | null,
+  create: (modelStore) => ({
+    // STT options: browser speech API, browser/server JS, or server handles
+    stt: WebSpeechSTT | TransformersSTT | null,
 
-  // LLM options: browser/server JS, or server handles
-  llm: TransformersLLM | null,
+    // LLM options: browser/server JS, or server handles
+    // Transformers backends require modelStore for caching
+    llm: TransformersLLM | null,
 
-  // TTS options: browser speech API, browser/server JS, or server handles
-  tts: WebSpeechTTS | TransformersTTS | null,
+    // TTS options: browser speech API, browser/server JS, or server handles
+    tts: WebSpeechTTS | TransformersTTS | null,
 
-  // Required if any component is null
-  serverUrl: 'ws://localhost:3100',
+    // Required if any component is null
+    serverUrl: 'ws://localhost:3100',
 
-  // Required if llm is provided locally
-  systemPrompt: 'You are a helpful assistant.',
+    // Required if llm is provided locally
+    systemPrompt: 'You are a helpful assistant.',
+  }),
 
   // Optional
   sampleRate: 16000,
@@ -134,20 +143,22 @@ The server-side pipeline that processes audio/text through STT → LLM → TTS.
 
 ### Creating a Pipeline
 
-Backends are passed as factory functions, allowing the pipeline to create isolated instances per session:
+A single factory function creates all components. The `modelStore` is passed in for caching heavy resources (like Transformers.js models):
 
 ```typescript
-const pipeline = new VoicePipeline({
-  // STT factory: JS or native binary, or null if client handles
-  stt: () => new TransformersSTT(...) | () => new NativeSTT(...) | null,
+const pipeline = createVoicePipeline({
+  create: (modelStore) => ({
+    // STT: JS or native binary, or null if client handles
+    stt: new TransformersSTT(..., modelStore) | new NativeSTT(...) | null,
 
-  // LLM factory: JS, native binary, or cloud API (required)
-  llm: () => new TransformersLLM(...) | () => new NativeLLM(...) | () => new CloudLLM(...),
+    // LLM: JS, native binary, or cloud API (required)
+    llm: new TransformersLLM(..., modelStore) | new NativeLLM(...) | new CloudLLM(...),
 
-  // TTS factory: JS or native binary, or null if client handles
-  tts: () => new TransformersTTS(...) | () => new NativeTTS(...) | null,
+    // TTS: JS or native binary, or null if client handles
+    tts: new TransformersTTS(..., modelStore) | new NativeTTS(...) | null,
 
-  systemPrompt: string,
+    systemPrompt: string,
+  }),
   tools?: Tool[],             // optional function calling
 });
 
@@ -211,15 +222,17 @@ import { createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'modular-voice-age
 import { TransformersLLM } from 'modular-voice-agent-sdk';
 
 const client = createVoiceClient({
-  stt: new WebSpeechSTT({ language: 'en-US' }),
-  llm: new TransformersLLM({
-    model: 'HuggingFaceTB/SmolLM2-360M-Instruct',
-    dtype: 'q4',
-    maxNewTokens: 140,
-    device: 'webgpu',
+  create: (modelStore) => ({
+    stt: new WebSpeechSTT({ language: 'en-US' }),
+    llm: new TransformersLLM({
+      model: 'HuggingFaceTB/SmolLM2-360M-Instruct',
+      dtype: 'q4',
+      maxNewTokens: 140,
+      device: 'webgpu',
+    }, modelStore),
+    tts: new WebSpeechTTS({ voiceName: 'Samantha' }),
+    systemPrompt: 'You are a helpful voice assistant.',
   }),
-  tts: new WebSpeechTTS({ voiceName: 'Samantha' }),
-  systemPrompt: 'You are a helpful voice assistant.',
 });
 ```
 
@@ -230,20 +243,24 @@ Client sends audio, server handles everything:
 **Client:**
 ```typescript
 const client = createVoiceClient({
-  stt: null,
-  llm: null,
-  tts: null,
-  serverUrl: 'ws://localhost:3100',
+  create: () => ({
+    stt: null,
+    llm: null,
+    tts: null,
+    serverUrl: 'ws://localhost:3100',
+  }),
 });
 ```
 
 **Server:**
 ```typescript
-const pipeline = new VoicePipeline({
-  stt: () => new TransformersSTT({ model: 'Xenova/whisper-small', dtype: 'q8' }),
-  llm: () => new TransformersLLM({ model: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', dtype: 'q4' }),
-  tts: () => new TransformersTTS({ model: 'Xenova/speecht5_tts', dtype: 'fp16', speakerEmbeddings: '...' }),
-  systemPrompt: 'You are a helpful voice assistant.',
+const pipeline = createVoicePipeline({
+  create: (modelStore) => ({
+    stt: new TransformersSTT({ model: 'Xenova/whisper-small', dtype: 'q8' }, modelStore),
+    llm: new TransformersLLM({ model: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', dtype: 'q4' }, modelStore),
+    tts: new TransformersTTS({ model: 'Xenova/speecht5_tts', dtype: 'fp16', speakerEmbeddings: '...' }, modelStore),
+    systemPrompt: 'You are a helpful voice assistant.',
+  }),
 });
 ```
 
@@ -252,20 +269,24 @@ const pipeline = new VoicePipeline({
 **Client:**
 ```typescript
 const client = createVoiceClient({
-  stt: new WebSpeechSTT({ language: 'en-US' }),
-  llm: null,
-  tts: new WebSpeechTTS({ voiceName: 'Samantha' }),
-  serverUrl: 'ws://localhost:3100',
+  create: () => ({
+    stt: new WebSpeechSTT({ language: 'en-US' }),
+    llm: null,
+    tts: new WebSpeechTTS({ voiceName: 'Samantha' }),
+    serverUrl: 'ws://localhost:3100',
+  }),
 });
 ```
 
 **Server:**
 ```typescript
-const pipeline = new VoicePipeline({
-  stt: null,
-  llm: () => new NativeLLM({ model: 'llama-3.2-1b-instruct-q4_k_m.gguf' }),
-  tts: null,
-  systemPrompt: 'You are a helpful voice assistant.',
+const pipeline = createVoicePipeline({
+  create: () => ({
+    stt: null,
+    llm: new NativeLLM({ model: 'llama-3.2-1b-instruct-q4_k_m.gguf' }),
+    tts: null,
+    systemPrompt: 'You are a helpful voice assistant.',
+  }),
 });
 ```
 
@@ -275,16 +296,18 @@ const pipeline = new VoicePipeline({
 ```typescript
 import { CloudLLM } from 'modular-voice-agent-sdk/cloud';
 
-const pipeline = new VoicePipeline({
-  stt: () => new NativeSTT({ model: 'base.en' }),
-  llm: () => new CloudLLM({
-    baseUrl: 'https://api.openai.com/v1',
-    apiKey: process.env.OPENAI_API_KEY,
-    model: 'gpt-5-mini',
-    maxTokens: 256,
+const pipeline = createVoicePipeline({
+  create: () => ({
+    stt: new NativeSTT({ model: 'base.en' }),
+    llm: new CloudLLM({
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: process.env.OPENAI_API_KEY,
+      model: 'gpt-5-mini',
+      maxTokens: 256,
+    }),
+    tts: new NativeTTS({ model: 'en_US-amy-medium' }),
+    systemPrompt: 'You are a helpful voice assistant.',
   }),
-  tts: () => new NativeTTS({ model: 'en_US-amy-medium' }),
-  systemPrompt: 'You are a helpful voice assistant.',
 });
 ```
 
@@ -323,9 +346,13 @@ const getWeather: Tool = {
 ### Using Tools
 
 ```typescript
-const pipeline = new VoicePipeline({
-  llm: () => new CloudLLM({ ... }),
-  systemPrompt: 'You are a helpful assistant.',
+const pipeline = createVoicePipeline({
+  create: () => ({
+    llm: new CloudLLM({ ... }),
+    stt: null,
+    tts: null,
+    systemPrompt: 'You are a helpful assistant.',
+  }),
   tools: [getWeather, getTime, rollDice],
 });
 ```
@@ -355,7 +382,7 @@ You don't need to do anything different — just pass `tools` and the backend ha
 ### Complete Example
 
 ```typescript
-import { VoicePipeline, Tool } from 'modular-voice-agent-sdk';
+import { createVoicePipeline, Tool } from 'modular-voice-agent-sdk';
 import { CloudLLM } from 'modular-voice-agent-sdk/cloud';
 
 const tools: Tool[] = [
@@ -386,13 +413,17 @@ const tools: Tool[] = [
   },
 ];
 
-const pipeline = new VoicePipeline({
-  llm: () => new CloudLLM({
-    baseUrl: 'https://api.openai.com/v1',
-    apiKey: process.env.OPENAI_API_KEY,
-    model: 'gpt-5-mini',
+const pipeline = createVoicePipeline({
+  create: () => ({
+    stt: null,
+    llm: new CloudLLM({
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: process.env.OPENAI_API_KEY,
+      model: 'gpt-5-mini',
+    }),
+    tts: null,
+    systemPrompt: 'You are a helpful assistant. Use tools when needed.',
   }),
-  systemPrompt: 'You are a helpful assistant. Use tools when needed.',
   tools,
 });
 ```
@@ -533,15 +564,19 @@ new CloudAudioLLM({
 })
 ```
 
-Use by passing the same factory to both `stt` and `llm`:
+Use by returning the same instance for both `stt` and `llm`:
 
 ```typescript
-const audioLLM = () => new CloudAudioLLM({ ... });
-const pipeline = new VoicePipeline({
-  stt: audioLLM,
-  llm: audioLLM,  // Same factory - pipeline detects and shares the instance
-  tts: null,
-  systemPrompt: '...',
+const pipeline = createVoicePipeline({
+  create: () => {
+    const audioLLM = new CloudAudioLLM({ ... });
+    return {
+      stt: audioLLM,
+      llm: audioLLM,  // Same instance - pipeline detects this pattern
+      tts: null,
+      systemPrompt: '...',
+    };
+  },
 });
 ```
 
@@ -550,11 +585,13 @@ const pipeline = new VoicePipeline({
 The server supports automatic capability detection for scenarios where you need one server to handle multiple client types (e.g., during rolling deployments).
 
 ```typescript
-const pipeline = new VoicePipeline({
-  stt: () => new NativeSTT({ ... }),  // used if client sends audio
-  llm: () => new NativeLLM({ ... }),
-  tts: () => new NativeTTS({ ... }),  // skipped if client has local TTS
-  systemPrompt: '...',
+const pipeline = createVoicePipeline({
+  create: () => ({
+    stt: new NativeSTT({ ... }),  // used if client sends audio
+    llm: new NativeLLM({ ... }),
+    tts: new NativeTTS({ ... }),  // skipped if client has local TTS
+    systemPrompt: '...',
+  }),
 });
 ```
 

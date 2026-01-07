@@ -9,10 +9,12 @@ import { createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'modular-voice-age
 import { TransformersLLM } from 'modular-voice-agent-sdk';
 
 const client = createVoiceClient({
-  stt: new WebSpeechSTT(),
-  llm: new TransformersLLM({ model: 'HuggingFaceTB/SmolLM2-360M-Instruct' }),
-  tts: new WebSpeechTTS(),
-  systemPrompt: 'You are a helpful assistant.',
+  create: (modelStore) => ({
+    stt: new WebSpeechSTT(),
+    llm: new TransformersLLM({ model: 'HuggingFaceTB/SmolLM2-360M-Instruct' }, modelStore),
+    tts: new WebSpeechTTS(),
+    systemPrompt: 'You are a helpful assistant.',
+  }),
 });
 
 await client.connect();
