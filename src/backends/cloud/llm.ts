@@ -86,11 +86,8 @@ export class CloudLLM implements LLMPipeline {
       throw new Error('LLM pipeline not initialized');
     }
 
-    // Use conversation ID if provided, else default
-    const conversationId = options?.conversationId ?? 'default';
-
     // Log the input messages
-    this.tracker.logInput(conversationId, messages as TrackerMessage[]);
+    this.tracker.logInput(messages as TrackerMessage[]);
 
     const url = `${this.config.baseUrl}/chat/completions`;
 
@@ -248,7 +245,6 @@ export class CloudLLM implements LLMPipeline {
 
     // Log the response
     this.tracker.logOutput(
-      conversationId,
       fullContent,
       resultToolCalls.length > 0 ? resultToolCalls : undefined
     );

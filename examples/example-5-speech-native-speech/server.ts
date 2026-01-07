@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   // LLM-only pipeline with tools - client handles STT and TTS
   const pipeline = new VoicePipeline({
     stt: null,  // Client does WebSpeech STT
-    llm: new NativeLLM(CONFIG.llm),
+    llm: () => new NativeLLM(CONFIG.llm),
     tts: null,  // Client does WebSpeech TTS
     systemPrompt: CONFIG.systemPrompt,
     tools: demoTools,

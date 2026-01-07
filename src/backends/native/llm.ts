@@ -280,9 +280,8 @@ ws ::= [ \\t\\n]*
    * Output goes to stdout, debug/timing info goes to stderr (ignored)
    */
   private runLlamaCompletion(args: string[], messages: Message[], options?: LLMGenerateOptions): Promise<string> {
-    // Log the input messages (use conversation ID if provided, else default)
-    const conversationId = options?.conversationId ?? 'default';
-    this.tracker.logInput(conversationId, messages as TrackerMessage[]);
+    // Log the input messages
+    this.tracker.logInput(messages as TrackerMessage[]);
 
     return new Promise((resolve, reject) => {
       const proc = spawn(this.config.binaryPath, args, {
@@ -317,7 +316,7 @@ ws ::= [ \\t\\n]*
 
         // Clean up output - remove special tokens
         const cleaned = output.replace(NativeLLM.SPECIAL_TOKENS, '').trim();
-        this.tracker.logRawOutput(conversationId, cleaned);
+        this.tracker.logRawOutput(cleaned);
         resolve(cleaned);
       });
 
@@ -335,8 +334,7 @@ ws ::= [ \\t\\n]*
     messages: Message[],
     options?: LLMGenerateOptions
   ): Promise<LLMGenerateResult> {
-    const conversationId = options?.conversationId ?? 'default';
-    this.tracker.logInput(conversationId, messages as TrackerMessage[]);
+    this.tracker.logInput(messages as TrackerMessage[]);
 
     return new Promise((resolve, reject) => {
       const proc = spawn(this.config.binaryPath, args, {
@@ -401,7 +399,7 @@ ws ::= [ \\t\\n]*
         // Final processing based on mode
         const fullOutput = (mode === 'say' ? SAY_PREFIX + ' ' : TOOL_PREFIX + ' ') +
                           (textContent || '') + buffer;
-        this.tracker.logRawOutput(conversationId, fullOutput.replace(NativeLLM.SPECIAL_TOKENS, '').trim());
+        this.tracker.logRawOutput(fullOutput.replace(NativeLLM.SPECIAL_TOKENS, '').trim());
 
         if (mode === 'say') {
           // Any remaining content in buffer

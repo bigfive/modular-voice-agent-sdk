@@ -247,7 +247,6 @@ export class VoiceClient {
   private isSpeaking = false;
 
   // Conversation state (for local mode)
-  private conversationId = this.generateConversationId();
   private history: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string }> = [];
 
   // Recording state for local pipeline
@@ -256,9 +255,6 @@ export class VoiceClient {
   private audioChunks: Blob[] = [];
   private mediaRecording = false;
 
-  private generateConversationId(): string {
-    return `conv-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-  }
 
   constructor(config: VoiceClientConfig) {
     // Check browser support first
@@ -348,10 +344,11 @@ export class VoiceClient {
       const sttForPipeline = isWebSpeechSTT(this.localSTT) ? null : (this.localSTT as STTPipeline);
       const ttsForPipeline = isWebSpeechTTS(this.localTTS) ? null : (this.localTTS as TTSPipeline);
 
+      // Wrap instances in factory functions (they return the same instance since we're in local mode)
       this.localPipeline = new VoicePipeline({
-        stt: sttForPipeline,
-        llm: this.localLLM!,
-        tts: ttsForPipeline,
+        stt: sttForPipeline ? () => sttForPipeline : null,
+        llm: () => this.localLLM!,
+        tts: ttsForPipeline ? () => ttsForPipeline : null,
         systemPrompt: this.config.systemPrompt,
       });
     }
@@ -632,7 +629,6 @@ export class VoiceClient {
     }
 
     const context = {
-      conversationId: this.conversationId,
       history: this.history,
     };
 
@@ -686,7 +682,6 @@ export class VoiceClient {
 
     try {
       const result = await this.localLLM.generate(this.history, {
-        conversationId: this.conversationId,
         onToken: (token: string) => {
           this.currentResponse += token;
           this.emit('responseChunk', token);
@@ -726,7 +721,6 @@ export class VoiceClient {
    */
   clearHistory(): void {
     // Reset local history
-    this.conversationId = this.generateConversationId();
     if (this.localPipeline) {
       this.history = this.localPipeline.createInitialHistory();
     } else {

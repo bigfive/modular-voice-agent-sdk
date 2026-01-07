@@ -8,6 +8,7 @@
 import { pipeline } from '@huggingface/transformers';
 import type { TTSPipeline, TransformersTTSConfig, ProgressCallback, AudioPlayable } from '../../types';
 import { BufferedAudioPlayable } from '../../types';
+import { getCachedOrLoad } from '../../cache';
 
 export class TransformersTTS implements TTSPipeline {
   private config: TransformersTTSConfig;
@@ -20,16 +21,20 @@ export class TransformersTTS implements TTSPipeline {
   }
 
   async initialize(onProgress?: ProgressCallback): Promise<void> {
-    console.log(`Loading TTS model (${this.config.model})...`);
+    const cacheKey = `transformers-tts:${this.config.model}:${this.config.dtype}:${this.config.device ?? 'default'}`;
 
-    this.pipe = await pipeline('text-to-speech', this.config.model, {
-      dtype: this.config.dtype as 'fp32' | 'fp16' | 'q8' | 'q4',
-      device: this.config.device,
-      progress_callback: onProgress,
+    this.pipe = await getCachedOrLoad(cacheKey, async () => {
+      console.log(`Loading TTS model (${this.config.model})...`);
+      const pipe = await pipeline('text-to-speech', this.config.model, {
+        dtype: this.config.dtype as 'fp32' | 'fp16' | 'q8' | 'q4',
+        device: this.config.device,
+        progress_callback: onProgress,
+      });
+      console.log('TTS model loaded.');
+      return pipe;
     });
 
     this.ready = true;
-    console.log('TTS model loaded.');
   }
 
   async synthesize(text: string): Promise<AudioPlayable> {

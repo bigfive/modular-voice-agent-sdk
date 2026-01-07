@@ -22,6 +22,7 @@ import type {
   ToolDefinition,
 } from '../../types';
 import { LLMLogger, LLMConversationTracker, type TrackerMessage } from '../../services';
+import { getCachedOrLoad } from '../../cache';
 
 export class TransformersLLM implements LLMPipeline {
   private config: TransformersLLMConfig;
@@ -36,16 +37,20 @@ export class TransformersLLM implements LLMPipeline {
   }
 
   async initialize(onProgress?: ProgressCallback): Promise<void> {
-    console.log(`Loading LLM model (${this.config.model})...`);
+    const cacheKey = `transformers-llm:${this.config.model}:${this.config.dtype}:${this.config.device ?? 'default'}`;
 
-    this.pipe = await pipeline('text-generation', this.config.model, {
-      dtype: this.config.dtype as 'fp32' | 'fp16' | 'q8' | 'q4',
-      device: this.config.device,
-      progress_callback: onProgress,
+    this.pipe = await getCachedOrLoad(cacheKey, async () => {
+      console.log(`Loading LLM model (${this.config.model})...`);
+      const pipe = await pipeline('text-generation', this.config.model, {
+        dtype: this.config.dtype as 'fp32' | 'fp16' | 'q8' | 'q4',
+        device: this.config.device,
+        progress_callback: onProgress,
+      });
+      console.log('LLM model loaded.');
+      return pipe;
     });
 
     this.ready = true;
-    console.log('LLM model loaded.');
   }
 
   supportsTools(): boolean {
@@ -59,11 +64,8 @@ export class TransformersLLM implements LLMPipeline {
       throw new Error('LLM pipeline not initialized');
     }
 
-    // Use conversation ID if provided, else default
-    const conversationId = options?.conversationId ?? 'default';
-
     // Log input messages
-    this.tracker.logInput(conversationId, messages as TrackerMessage[]);
+    this.tracker.logInput(messages as TrackerMessage[]);
 
     const prompt = this.formatChatPrompt(messages, options?.tools);
 
@@ -78,7 +80,7 @@ export class TransformersLLM implements LLMPipeline {
     response = response.replace(/<\|im_end\|>.*$/s, '').trim();
 
     // Log the response
-    this.tracker.logOutput(conversationId, response);
+    this.tracker.logOutput(response);
 
     // Stream character by character
     for (const char of response) {

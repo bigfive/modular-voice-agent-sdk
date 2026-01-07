@@ -29,8 +29,8 @@ async function main(): Promise<void> {
 
   // STT + LLM pipeline - client handles TTS
   const pipeline = new VoicePipeline({
-    stt: new TransformersSTT(CONFIG.stt),
-    llm: new TransformersLLM(CONFIG.llm),
+    stt: () => new TransformersSTT(CONFIG.stt),
+    llm: () => new TransformersLLM(CONFIG.llm),
     tts: null,  // Client does WebSpeech TTS
     systemPrompt: CONFIG.systemPrompt,
   });

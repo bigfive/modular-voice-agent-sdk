@@ -25,6 +25,7 @@ import type {
   ToolCall,
   ToolMessage,
   AssistantMessage,
+  TurnContext,
 } from '../../types';
 import { LLMLogger, LLMConversationTracker, type TrackerMessage } from '../../services';
 
@@ -41,30 +42,13 @@ export interface CloudAudioLLMConfig extends CloudLLMConfig {
   sampleRate?: number;
 }
 
-interface CachedAudioResponse {
-  transcript: string;
-  result: LLMGenerateResult;
-  audioHash: string;
-}
-
 export class CloudAudioLLM implements STTPipeline, LLMPipeline {
   private config: CloudAudioLLMConfig;
   private ready = false;
   private tracker: LLMConversationTracker;
 
-  // Cached response from transcribe() - used by the immediate generate() call
-  // This is instance-level because transcribe() doesn't know the conversationId yet
-  // (VoicePipeline calls transcribe() before generate())
-  private cachedResponse: CachedAudioResponse | null = null;
-
-  // Per-conversation state for audio (keyed by conversationId for WebSocket isolation)
-  // Used for tool follow-ups which need the original audio
-  private conversationAudio: Map<string, string> = new Map();
-
-  // Current conversation context (set by generate(), used by transcribe())
-  private currentConversationId: string = 'default';
-  private currentMessages: Message[] = [];
-  private currentOptions: LLMGenerateOptions | undefined;
+  // Last audio from this session - used for tool follow-ups (audio model requires audio in every request)
+  private lastAudio: string | null = null;
 
   constructor(config: CloudAudioLLMConfig) {
     this.config = {
@@ -74,7 +58,6 @@ export class CloudAudioLLM implements STTPipeline, LLMPipeline {
     };
     this.tracker = new LLMConversationTracker(new LLMLogger());
   }
-
 
   async initialize(_onProgress?: ProgressCallback): Promise<void> {
     console.log(`Initializing CloudAudioLLM (${this.config.baseUrl})...`);
@@ -98,28 +81,21 @@ export class CloudAudioLLM implements STTPipeline, LLMPipeline {
 
   /**
    * Transcribe audio by calling the multimodal API.
-   * Caches the full response for the subsequent generate() call.
+   * Sets both sttResult and llmResult in TurnContext for the subsequent generate() call.
    */
-  async transcribe(audio: Float32Array): Promise<string> {
-    const audioHash = this.hashAudio(audio);
-
-    // Check if we already processed this audio
-    if (this.cachedResponse?.audioHash === audioHash) {
-      return this.cachedResponse.transcript;
+  async transcribe(audio: Float32Array, turn?: TurnContext): Promise<string> {
+    if (!turn) {
+      throw new Error('CloudAudioLLM.transcribe() requires TurnContext. Pass turn parameter.');
     }
 
-    // Build messages with system prompt
-    const messages = this.currentMessages.length > 0 ? this.currentMessages : [];
+    if (turn.sttResult) {
+      return turn.sttResult.transcript;
+    }
 
-    // Process audio with multimodal API
-    const { transcript, result } = await this.processAudioWithAPI(
-      audio,
-      messages,
-      this.currentOptions
-    );
+    const { transcript, result } = await this.callAPI(turn.history, { tools: turn.tools }, audio);
 
-    // Cache for subsequent generate() call
-    this.cachedResponse = { transcript, result, audioHash };
+    turn.sttResult = { transcript };
+    turn.llmResult = result;
 
     return transcript;
   }
@@ -129,89 +105,78 @@ export class CloudAudioLLM implements STTPipeline, LLMPipeline {
   // ============================================================
 
   /**
-   * Generate response. If called after transcribe() with matching context,
-   * returns cached response (single API call total).
+   * Generate response.
+   * - Tool followup: Makes fresh API call with tool results
+   * - User request: Returns cached result from transcribe()
    */
   async generate(
     messages: Message[],
     options?: LLMGenerateOptions
   ): Promise<LLMGenerateResult> {
-    const conversationId = options?.conversationId ?? 'default';
+    const turn = options?.turn;
 
-    // Store context for potential audio processing (used by transcribe())
-    this.currentConversationId = conversationId;
-    this.currentMessages = messages;
-    this.currentOptions = options;
+    // Primary branch: Is this a tool followup?
+    const lastMessage = messages[messages.length - 1];
+    const isToolFollowup = lastMessage?.role === 'tool';
 
-    // Check if we have a cached response from transcribe()
-    if (this.cachedResponse) {
-      const cached = this.cachedResponse;
-      this.cachedResponse = null; // Clear cache
+    if (isToolFollowup) {
+      // Tool followup: fresh API call with tool results
+      const { result } = await this.callAPI(messages, options);
 
-      // Log input (messages now include the transcript as user message)
-      this.tracker.logInput(conversationId, messages as TrackerMessage[]);
-
-      // Stream the cached response if callback provided
-      if (options?.onToken && cached.result.content) {
-        for (const char of cached.result.content) {
+      if (options?.onToken && result.content) {
+        for (const char of result.content) {
           options.onToken(char);
         }
       }
 
-      // Log output
-      this.tracker.logOutput(
-        conversationId,
-        cached.result.content,
-        cached.result.toolCalls
-      );
-
-      return cached.result;
+      return result;
     }
 
-    // No cache - do standard text generation
-    return this.textGenerate(messages, options);
+    // User request: validate cached result exists
+    if (!turn?.llmResult) {
+      throw new Error(
+        'CloudAudioLLM.generate() called for user request without cached result. ' +
+        'Call transcribe() first, or check if this should be a tool followup.'
+      );
+    }
+
+    // Use cached result from transcribe()
+    const result = turn.llmResult;
+
+    this.tracker.logInput(messages as TrackerMessage[]);
+
+    if (options?.onToken && result.content) {
+      for (const char of result.content) {
+        options.onToken(char);
+      }
+    }
+
+    this.tracker.logOutput(result.content, result.toolCalls);
+    return result;
   }
 
   // ============================================================
-  // Internal: Audio Processing
+  // Internal: Unified API Call
   // ============================================================
 
-  private async processAudioWithAPI(
-    audio: Float32Array,
+  /**
+   * Make API call to the audio model.
+   *
+   * @param messages - Conversation history
+   * @param options - Generation options (tools, etc.)
+   * @param freshAudio - If provided, this is an audio turn (transcribe + respond).
+   *                     If not provided, this is a text turn (use stored lastAudio).
+   */
+  private async callAPI(
     messages: Message[],
-    options?: LLMGenerateOptions
+    options?: LLMGenerateOptions,
+    freshAudio?: Float32Array
   ): Promise<{ transcript: string; result: LLMGenerateResult }> {
-    // Encode audio to base64 and store for potential follow-up requests (tool results)
-    const base64Audio = this.encodeAudioToBase64(audio);
-    const conversationId = options?.conversationId ?? this.currentConversationId;
-    this.conversationAudio.set(conversationId, base64Audio);
+    const isAudioTurn = !!freshAudio;
+    const hasTools = !!(options?.tools && options.tools.length > 0);
 
-    // Build the multimodal request (pass tools to inject selection instruction)
-    const hasTools = options?.tools && options.tools.length > 0;
-    const openaiMessages = this.convertMessagesForAudio(messages, hasTools);
+    const openaiMessages = this.buildMessages(messages, hasTools, freshAudio);
 
-    // Add the audio input as a user message with transcript instruction
-    // Parenthetical format works well - doesn't interfere with model understanding
-    openaiMessages.push({
-      role: 'user',
-      content: [
-        {
-          type: 'input_audio',
-          input_audio: {
-            data: base64Audio,
-            format: this.config.audioFormat,
-          },
-        },
-        {
-          type: 'text',
-          text: 'Respond with JSON: {"transcript":"<what user said>","response":"<your response>"}',
-        },
-      ],
-    });
-
-    // Build request body
-    // Note: Audio models don't support structured outputs, so we prompt for JSON format
-    // Specify modalities to indicate we want text output (audio input is in the messages)
     const body: Record<string, unknown> = {
       model: this.config.model,
       messages: openaiMessages,
@@ -219,17 +184,14 @@ export class CloudAudioLLM implements STTPipeline, LLMPipeline {
       ...this.config.modelParams,
     };
 
-    // Track if we expect JSON response (no tools = expect JSON)
-    let expectJson = true;
-
-    // Add tools if provided
-    if (options?.tools && options.tools.length > 0) {
-      body.tools = this.convertTools(options.tools);
-      body.parallel_tool_calls = false; // Force sequential tool calls
-      expectJson = false; // Model may return tool calls instead of JSON
+    if (hasTools) {
+      body.tools = this.convertTools(options!.tools!);
+      body.parallel_tool_calls = false;
     }
 
-    // Note: Input logging happens in generate() when we have complete messages with transcript
+    if (!isAudioTurn) {
+      this.tracker.logInput(messages as TrackerMessage[]);
+    }
 
     const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -242,17 +204,29 @@ export class CloudAudioLLM implements STTPipeline, LLMPipeline {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(
-        `CloudAudioLLM API error (${response.status}): ${errorText}`
-      );
+      throw new Error(`CloudAudioLLM API error (${response.status}): ${errorText}`);
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
+    const rawContent = data.choices?.[0]?.message?.content || '';
     const toolCalls = this.extractToolCalls(data);
+    const finishReason = data.choices?.[0]?.finish_reason;
 
-    // Parse the response based on format used
-    const { transcript, responseText } = this.parseStructuredResponse(content, expectJson);
+    if (!rawContent && toolCalls.length === 0) {
+      const reason = finishReason || 'unknown';
+      throw new Error(
+        `CloudAudioLLM returned empty response (finish_reason: ${reason}). ` +
+          (reason === 'length'
+            ? 'The model hit the token limit before producing output. Try increasing max_completion_tokens.'
+            : 'The model did not produce any content.')
+      );
+    }
+
+    const { transcript, responseText } = this.parseResponse(rawContent, isAudioTurn, toolCalls.length > 0);
+
+    if (!isAudioTurn) {
+      this.tracker.logOutput(responseText, toolCalls.length > 0 ? toolCalls : undefined);
+    }
 
     const result: LLMGenerateResult = {
       content: responseText,
@@ -264,254 +238,130 @@ export class CloudAudioLLM implements STTPipeline, LLMPipeline {
   }
 
   /**
-   * Parse the response based on format used
-   * - JSON mode: {"transcript":"...","response":"..."}
-   * - Tool mode: Plain text (model may go straight to tool call)
+   * Build messages for the API call.
    */
-  private parseStructuredResponse(
-    content: string,
-    expectJson: boolean
-  ): {
-    transcript: string;
-    responseText: string;
-  } {
-    if (expectJson) {
-      // Parse JSON response
-      const parsed = JSON.parse(content);
-      return {
-        transcript: parsed.transcript,
-        responseText: parsed.response,
-      };
+  private buildMessages(messages: Message[], hasTools: boolean, freshAudio?: Float32Array): unknown[] {
+    const converted = this.convertMessages(messages);
+
+    // Add tool instruction to system prompt if tools are available
+    if (hasTools && converted.length > 0) {
+      const first = converted[0] as { role: string; content: string };
+      if (first.role === 'system') {
+        first.content += '\n\nOnly call ONE tool at a time. Wait for the result before deciding if another tool is needed.';
+      }
     }
 
-    // Tool mode: content may be empty or brief (model went to tool call)
-    // Just return whatever content we got
-    return {
-      transcript: '[audio processed]',
-      responseText: content,
-    };
-  }
+    if (freshAudio) {
+      // Audio turn: encode and store audio, add multimodal user message
+      const base64Audio = this.encodeAudioToBase64(freshAudio);
+      this.lastAudio = base64Audio;
 
-  // ============================================================
-  // Internal: Text Generation (for non-audio turns)
-  // ============================================================
-
-  private async textGenerate(
-    messages: Message[],
-    options?: LLMGenerateOptions
-  ): Promise<LLMGenerateResult> {
-    const conversationId = options?.conversationId ?? 'default';
-    this.tracker.logInput(conversationId, messages as TrackerMessage[]);
-
-    // Convert messages and inject stored audio (audio model requires audio in every request)
-    const openaiMessages = this.convertMessagesWithAudio(messages, conversationId);
-
-    const body: Record<string, unknown> = {
-      model: this.config.model,
-      messages: openaiMessages,
-      modalities: ['text'],
-      stream: !!options?.onToken,
-      ...this.config.modelParams,
-    };
-
-    if (options?.tools && options.tools.length > 0) {
-      body.tools = this.convertTools(options.tools);
-      body.parallel_tool_calls = false; // Force sequential tool calls
-    }
-
-    const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        ...this.getHeaders(),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `CloudAudioLLM API error (${response.status}): ${errorText}`
-      );
-    }
-
-    if (options?.onToken && response.body) {
-      return this.handleStreamingResponse(
-        response.body,
-        options,
-        conversationId
-      );
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
-    const toolCalls = this.extractToolCalls(data);
-    const finishReason = data.choices?.[0]?.finish_reason;
-
-    // Check for empty response (no content and no tool calls)
-    if (!content && toolCalls.length === 0) {
-      const reason = finishReason || 'unknown';
-      throw new Error(
-        `CloudAudioLLM returned empty response (finish_reason: ${reason}). ` +
-        (reason === 'length'
-          ? 'The model hit the token limit before producing output. Try increasing max_completion_tokens.'
-          : 'The model did not produce any content.')
-      );
-    }
-
-    this.tracker.logOutput(
-      conversationId,
-      content,
-      toolCalls.length > 0 ? toolCalls : undefined
-    );
-
-    return {
-      content,
-      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-      finishReason: toolCalls.length > 0 ? 'tool_calls' : 'stop',
-    };
-  }
-
-  private async handleStreamingResponse(
-    body: ReadableStream<Uint8Array>,
-    options: LLMGenerateOptions,
-    conversationId: string
-  ): Promise<LLMGenerateResult> {
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let fullContent = '';
-    let buffer = '';
-    let finishReason: string | null = null;
-    const toolCalls: Map<
-      number,
-      { id: string; name: string; arguments: string }
-    > = new Map();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed === 'data: [DONE]') continue;
-
-        if (trimmed.startsWith('data: ')) {
-          const jsonStr = trimmed.slice(6);
-          try {
-            const parsed = JSON.parse(jsonStr);
-
-            // Check for API error in stream
-            if (parsed.error) {
-              throw new Error(`CloudAudioLLM stream error: ${JSON.stringify(parsed.error)}`);
-            }
-
-            const choice = parsed.choices?.[0];
-            const delta = choice?.delta;
-
-            if (delta?.content) {
-              fullContent += delta.content;
-              options.onToken?.(delta.content);
-            }
-
-            if (delta?.tool_calls) {
-              for (const tc of delta.tool_calls) {
-                const index = tc.index ?? 0;
-                if (!toolCalls.has(index)) {
-                  toolCalls.set(index, { id: '', name: '', arguments: '' });
-                }
-                const existing = toolCalls.get(index)!;
-                if (tc.id) existing.id = tc.id;
-                if (tc.function?.name) existing.name = tc.function.name;
-                if (tc.function?.arguments)
-                  existing.arguments += tc.function.arguments;
-              }
-            }
-
-            // Track finish reason from API
-            if (choice?.finish_reason) {
-              finishReason = choice.finish_reason;
-            }
-          } catch (e) {
-            // Re-throw actual errors, only skip JSON parse errors
-            if (e instanceof SyntaxError) {
-              console.warn('CloudAudioLLM: Skipping malformed JSON line:', jsonStr.substring(0, 100));
-            } else {
-              throw e;
-            }
+      converted.push({
+        role: 'user',
+        content: [
+          {
+            type: 'input_audio',
+            input_audio: {
+              data: base64Audio,
+              format: this.config.audioFormat,
+            },
+          },
+          {
+            type: 'text',
+            text: 'Respond with JSON: {"transcript":"<what user said>","response":"<your response>"}',
+          },
+        ],
+      });
+    } else {
+      // Text turn: inject stored audio into last user message, add JSON instruction
+      if (this.lastAudio) {
+        for (let i = converted.length - 1; i >= 0; i--) {
+          const msg = converted[i] as { role: string; content: unknown };
+          if (msg.role === 'user' && typeof msg.content === 'string') {
+            converted[i] = {
+              role: 'user',
+              content: [
+                {
+                  type: 'input_audio',
+                  input_audio: {
+                    data: this.lastAudio,
+                    format: this.config.audioFormat,
+                  },
+                },
+                {
+                  type: 'text',
+                  text: msg.content,
+                },
+              ],
+            };
+            break;
           }
         }
       }
+
+      converted.push({
+        role: 'user',
+        content: 'Respond to the user\'s request with JSON: {"response":"<your response>"}',
+      });
     }
 
-    const resultToolCalls: ToolCall[] = [];
-    for (const [, tc] of toolCalls) {
-      if (tc.id && tc.name) {
-        resultToolCalls.push({
-          id: tc.id,
-          name: tc.name,
-          arguments: JSON.parse(tc.arguments || '{}'),
-        });
+    return converted;
+  }
+
+  /**
+   * Parse API response. Handles both audio turn format {transcript, response}
+   * and text turn format {response}.
+   */
+  private parseResponse(
+    content: string,
+    isAudioTurn: boolean,
+    hasToolCalls: boolean
+  ): { transcript: string; responseText: string } {
+    if (content) {
+      try {
+        const parsed = JSON.parse(content);
+
+        if (isAudioTurn && parsed.transcript !== undefined && parsed.response !== undefined) {
+          return { transcript: parsed.transcript, responseText: parsed.response };
+        }
+
+        if (!isAudioTurn && parsed.response !== undefined) {
+          return { transcript: '', responseText: parsed.response };
+        }
+      } catch {
+        // Not valid JSON, continue to fallback
       }
     }
 
-    // Check for empty response (no content and no tool calls)
-    if (!fullContent && resultToolCalls.length === 0) {
-      const reason = finishReason || 'unknown';
-      throw new Error(
-        `CloudAudioLLM returned empty response (finish_reason: ${reason}). ` +
-        (reason === 'length'
-          ? 'The model hit the token limit before producing output. Try increasing max_completion_tokens.'
-          : 'The model did not produce any content.')
-      );
+    // Fallback: model went straight to tool call
+    if (hasToolCalls) {
+      return {
+        transcript: isAudioTurn ? '[audio processed]' : '',
+        responseText: content,
+      };
     }
 
-    this.tracker.logOutput(
-      conversationId,
-      fullContent,
-      resultToolCalls.length > 0 ? resultToolCalls : undefined
-    );
-
-    return {
-      content: fullContent,
-      toolCalls: resultToolCalls.length > 0 ? resultToolCalls : undefined,
-      finishReason: resultToolCalls.length > 0 ? 'tool_calls' : 'stop',
-    };
+    const expectedFormat = isAudioTurn ? '{"transcript":"...","response":"..."}' : '{"response":"..."}';
+    throw new Error(`CloudAudioLLM: Expected JSON ${expectedFormat} but got: ${content.substring(0, 100)}`);
   }
 
   // ============================================================
   // Internal: Helpers
   // ============================================================
 
-  private hashAudio(audio: Float32Array): string {
-    // Simple hash based on length and samples
-    let hash = audio.length;
-    const step = Math.max(1, Math.floor(audio.length / 100));
-    for (let i = 0; i < audio.length; i += step) {
-      hash = (hash << 5) - hash + Math.floor(audio[i] * 1000);
-      hash |= 0;
-    }
-    return `audio-${audio.length}-${hash}`;
-  }
-
   private encodeAudioToBase64(audio: Float32Array): string {
-    // Convert Float32Array to 16-bit PCM WAV, then base64
     const numChannels = 1;
     const sampleRate = this.config.sampleRate!;
     const bitsPerSample = 16;
     const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
     const blockAlign = (numChannels * bitsPerSample) / 8;
-    const dataSize = audio.length * 2; // 16-bit = 2 bytes per sample
+    const dataSize = audio.length * 2;
     const headerSize = 44;
     const totalSize = headerSize + dataSize;
 
     const buffer = new ArrayBuffer(totalSize);
     const view = new DataView(buffer);
 
-    // WAV header
     const writeString = (offset: number, str: string) => {
       for (let i = 0; i < str.length; i++) {
         view.setUint8(offset + i, str.charCodeAt(i));
@@ -522,8 +372,8 @@ export class CloudAudioLLM implements STTPipeline, LLMPipeline {
     view.setUint32(4, totalSize - 8, true);
     writeString(8, 'WAVE');
     writeString(12, 'fmt ');
-    view.setUint32(16, 16, true); // Subchunk1Size
-    view.setUint16(20, 1, true); // AudioFormat (PCM)
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
     view.setUint16(22, numChannels, true);
     view.setUint32(24, sampleRate, true);
     view.setUint32(28, byteRate, true);
@@ -532,7 +382,6 @@ export class CloudAudioLLM implements STTPipeline, LLMPipeline {
     writeString(36, 'data');
     view.setUint32(40, dataSize, true);
 
-    // Convert Float32 samples to Int16
     let offset = 44;
     for (let i = 0; i < audio.length; i++) {
       const sample = Math.max(-1, Math.min(1, audio[i]));
@@ -541,7 +390,6 @@ export class CloudAudioLLM implements STTPipeline, LLMPipeline {
       offset += 2;
     }
 
-    // Convert to base64
     const bytes = new Uint8Array(buffer);
     let binary = '';
     for (let i = 0; i < bytes.length; i++) {
@@ -581,59 +429,6 @@ export class CloudAudioLLM implements STTPipeline, LLMPipeline {
 
       return { role: m.role, content: m.content };
     });
-  }
-
-  private convertMessagesForAudio(messages: Message[], hasTools: boolean = false): unknown[] {
-    const converted = this.convertMessages(messages);
-
-    // Add tool selection instruction to system prompt if tools are available
-    if (hasTools && converted.length > 0) {
-      const first = converted[0] as { role: string; content: string };
-      if (first.role === 'system') {
-        first.content = first.content + '\n\nOnly call ONE tool at a time. Wait for the result before deciding if another tool is needed.';
-      }
-    }
-
-    return converted;
-  }
-
-  /**
-   * Convert messages and inject stored audio into the first user message.
-   * Audio models require audio in every request, so we include the original audio
-   * from the conversation when processing tool results.
-   */
-  private convertMessagesWithAudio(messages: Message[], conversationId: string): unknown[] {
-    const converted = this.convertMessages(messages);
-    const lastAudioBase64 = this.conversationAudio.get(conversationId);
-
-    // If we have stored audio, inject it into the first user message
-    if (lastAudioBase64) {
-      for (let i = 0; i < converted.length; i++) {
-        const msg = converted[i] as { role: string; content: unknown };
-        if (msg.role === 'user' && typeof msg.content === 'string') {
-          // Replace text-only user message with audio + text
-          converted[i] = {
-            role: 'user',
-            content: [
-              {
-                type: 'input_audio',
-                input_audio: {
-                  data: lastAudioBase64,
-                  format: this.config.audioFormat,
-                },
-              },
-              {
-                type: 'text',
-                text: msg.content,
-              },
-            ],
-          };
-          break; // Only inject into first user message
-        }
-      }
-    }
-
-    return converted;
   }
 
   private convertTools(tools: ToolDefinition[]): unknown[] {
@@ -683,4 +478,3 @@ export class CloudAudioLLM implements STTPipeline, LLMPipeline {
     return headers;
   }
 }
-

@@ -22,9 +22,9 @@ async function main(): Promise<void> {
   console.log('Loading Transformers.js models...');
 
   const pipeline = new VoicePipeline({
-    stt: new TransformersSTT(CONFIG.stt),
-    llm: new TransformersLLM(CONFIG.llm),
-    tts: new TransformersTTS(CONFIG.tts),
+    stt: () => new TransformersSTT(CONFIG.stt),
+    llm: () => new TransformersLLM(CONFIG.llm),
+    tts: () => new TransformersTTS(CONFIG.tts),
     systemPrompt: CONFIG.systemPrompt,
   });
 

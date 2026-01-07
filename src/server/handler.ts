@@ -3,10 +3,10 @@
  *
  * Framework-agnostic session handler for voice pipeline servers.
  * Supports capability negotiation - skips STT/TTS when client handles them.
- * Each session has its own conversation history and conversation ID.
+ * Each session has its own conversation history, backends, and state.
  */
 
-import type { VoicePipeline, ConversationContext } from '../voice-pipeline';
+import type { VoicePipeline, ConversationContext, SessionBackends } from '../voice-pipeline';
 import type { ClientMessage, ServerMessage } from '../client/protocol';
 import type { Message } from '../types';
 import { float32ToBase64Node, base64ToFloat32Node, concatFloat32Arrays } from './encoding';
@@ -24,15 +24,8 @@ interface ClientCapabilities {
 }
 
 /**
- * Generate a unique conversation ID
- */
-function generateConversationId(): string {
-  return `conv-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-}
-
-/**
  * A session represents a single client connection.
- * Each session has its own conversation history and ID.
+ * Each session has its own backends, conversation history, and state.
  */
 export class PipelineSession {
   private audioChunks: Float32Array[] = [];
@@ -44,15 +37,23 @@ export class PipelineSession {
 
   /** Session's conversation history */
   private history: Message[] = [];
-  /** Unique conversation ID for this session */
-  private conversationId: string;
 
-  constructor(
-    private pipeline: VoicePipeline
+  /** Private constructor - use PipelineSession.create() */
+  private constructor(
+    private pipeline: VoicePipeline,
+    private backends: SessionBackends
   ) {
-    this.conversationId = generateConversationId();
     // Initialize history with system prompt
     this.history = [{ role: 'system', content: this.pipeline.getSystemPrompt() }];
+  }
+
+  /**
+   * Create a new session with its own backend instances.
+   * Each session gets fresh backends for proper isolation.
+   */
+  static async create(pipeline: VoicePipeline): Promise<PipelineSession> {
+    const backends = await pipeline.createSessionBackends();
+    return new PipelineSession(pipeline, backends);
   }
 
   /**
@@ -60,7 +61,6 @@ export class PipelineSession {
    */
   private getContext(): ConversationContext {
     return {
-      conversationId: this.conversationId,
       history: this.history,
     };
   }
@@ -94,8 +94,7 @@ export class PipelineSession {
         break;
 
       case 'clear_history':
-        // Reset session history and get a new conversation ID
-        this.conversationId = generateConversationId();
+        // Reset session history
         this.history = [{ role: 'system', content: this.pipeline.getSystemPrompt() }];
         break;
     }
@@ -123,7 +122,7 @@ export class PipelineSession {
     this.audioChunks = [];
 
     yield* this.runPipeline((callbacks) =>
-      this.pipeline.processAudio(audio, this.getContext(), callbacks)
+      this.pipeline.processAudio(audio, this.getContext(), callbacks, this.backends)
     );
   }
 
@@ -136,7 +135,7 @@ export class PipelineSession {
     yield { type: 'transcript', text };
 
     yield* this.runPipeline((callbacks) =>
-      this.pipeline.processText(text, this.getContext(), callbacks)
+      this.pipeline.processText(text, this.getContext(), callbacks, this.backends)
     );
   }
 
@@ -247,10 +246,10 @@ export class PipelineHandler {
 
   /**
    * Create a new session for a client connection.
-   * Each session has its own conversation history.
+   * Each session gets its own backend instances for isolation.
    */
-  createSession(): PipelineSession {
-    return new PipelineSession(this.pipeline);
+  async createSession(): Promise<PipelineSession> {
+    return PipelineSession.create(this.pipeline);
   }
 
   /**

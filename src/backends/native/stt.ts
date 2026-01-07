@@ -6,7 +6,7 @@
 import { execSync } from 'child_process';
 import { writeFileSync, unlinkSync, existsSync } from 'fs';
 import { join } from 'path';
-import type { STTPipeline, NativeSTTConfig, ProgressCallback } from '../../types';
+import type { STTPipeline, NativeSTTConfig, ProgressCallback, TurnContext } from '../../types';
 
 export class NativeSTT implements STTPipeline {
   private config: NativeSTTConfig;
@@ -30,7 +30,7 @@ export class NativeSTT implements STTPipeline {
     console.log('Native STT ready.');
   }
 
-  async transcribe(audio: Float32Array): Promise<string> {
+  async transcribe(audio: Float32Array, _turn?: TurnContext): Promise<string> {
     if (!this.ready) {
       throw new Error('STT pipeline not initialized');
     }

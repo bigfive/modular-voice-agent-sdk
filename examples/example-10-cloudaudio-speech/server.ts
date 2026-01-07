@@ -56,14 +56,16 @@ async function main(): Promise<void> {
   console.log(`  Tools:  ${demoTools.map((t) => t.name).join(', ')}`);
   console.log('');
 
-  // Create the multimodal audio LLM - implements both STT and LLM interfaces
-  const audioLLM = new CloudAudioLLM(CONFIG.audioLLM);
+  // Create factory for multimodal audio LLM - implements both STT and LLM interfaces
+  // Each call creates a fresh instance (with its own per-session state)
+  const createAudioLLM = () => new CloudAudioLLM(CONFIG.audioLLM);
 
-  // Register the same instance as both STT and LLM
-  // This enables single API call: audio → transcript + response
+  // Register the same factory as both STT and LLM
+  // Each session gets a fresh instance, and that instance is used for both
+  // This enables single API call per session: audio → transcript + response
   const pipeline = new VoicePipeline({
-    stt: audioLLM, // Same instance handles transcription
-    llm: audioLLM, // Same instance handles generation (uses cached response)
+    stt: createAudioLLM, // Same factory handles transcription
+    llm: createAudioLLM, // Same factory handles generation (uses cached response)
     tts: null, // Client does WebSpeech TTS
     systemPrompt: CONFIG.systemPrompt,
     tools: demoTools,

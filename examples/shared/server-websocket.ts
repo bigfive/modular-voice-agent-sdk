@@ -39,9 +39,9 @@ export function startWebSocketServer(config: WebSocketServerConfig): WebSocketSe
 
   const wss = new WebSocketServer({ port });
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', async (ws) => {
     console.log('Client connected');
-    const session = handler.createSession();
+    const session = await handler.createSession();
 
     // Notify callback
     onConnect?.(ws, session);

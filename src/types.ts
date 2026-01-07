@@ -157,11 +157,39 @@ export interface ProgressInfo {
 
 export type ProgressCallback = (progress: ProgressInfo) => void;
 
+// ============ Turn Context ============
+
+/**
+ * Result from STT transcription
+ */
+export interface STTResult {
+  transcript: string;
+}
+
+/**
+ * TurnContext - Per-turn state that flows through the pipeline
+ *
+ * Created fresh for each user request (not session-level).
+ * Allows backends to share state within a single turn without
+ * relying on call-order-dependent internal state.
+ */
+export interface TurnContext {
+  /** Current conversation history (read-only reference) */
+  readonly history: Message[];
+  /** Tools available for this turn */
+  readonly tools?: ToolDefinition[];
+
+  /** Result from STT stage (set by STT backend) */
+  sttResult?: STTResult;
+  /** Result from LLM stage (set by LLM backend, or by CloudAudioLLM during transcription) */
+  llmResult?: LLMGenerateResult;
+}
+
 // ============ Pipeline Interfaces ============
 
 export interface STTPipeline {
   initialize(onProgress?: ProgressCallback): Promise<void>;
-  transcribe(audio: Float32Array): Promise<string>;
+  transcribe(audio: Float32Array, turn?: TurnContext): Promise<string>;
   isReady(): boolean;
 }
 
@@ -175,8 +203,8 @@ export interface LLMGenerateOptions {
   onToken?: (token: string) => void;
   /** Callback when tool calls are detected */
   onToolCall?: (toolCall: ToolCall) => void;
-  /** Conversation ID for tracking/logging (supports multiple simultaneous conversations) */
-  conversationId?: string;
+  /** Turn context for sharing state between pipeline stages */
+  turn?: TurnContext;
 }
 
 /**

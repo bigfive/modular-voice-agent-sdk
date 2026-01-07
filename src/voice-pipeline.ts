@@ -20,6 +20,7 @@ import type {
   ToolCall,
   AssistantMessage,
   ToolMessage,
+  TurnContext,
 } from './types';
 import { TextNormalizer } from './services/text-normalizer';
 
@@ -33,13 +34,16 @@ const DEFAULT_TOOL_FILLER_PHRASES = [
   'Let me look that up.',
 ];
 
+/** Factory function that creates a backend instance */
+export type BackendFactory<T> = () => T;
+
 export interface VoicePipelineConfig {
-  /** STT backend (optional if client does local STT) */
-  stt?: STTPipeline | null;
-  /** LLM backend (required) */
-  llm: LLMPipeline;
-  /** TTS backend (optional if client does local TTS) */
-  tts?: TTSPipeline | null;
+  /** STT backend factory (optional if client does local STT) */
+  stt?: BackendFactory<STTPipeline> | null;
+  /** LLM backend factory (required) */
+  llm: BackendFactory<LLMPipeline>;
+  /** TTS backend factory (optional if client does local TTS) */
+  tts?: BackendFactory<TTSPipeline> | null;
   /** System prompt for the LLM */
   systemPrompt: string;
   /** Registered tools for function calling */
@@ -68,16 +72,30 @@ export interface VoicePipelineCallbacks {
  * Conversation context - callers manage history externally
  */
 export interface ConversationContext {
-  /** Unique conversation ID for tracking/logging */
-  conversationId: string;
   /** Conversation history (managed by caller) */
   history: Message[];
 }
 
+/**
+ * Session backends - per-session instances created from factories
+ */
+export interface SessionBackends {
+  stt: STTPipeline | null;
+  llm: LLMPipeline;
+  tts: TTSPipeline | null;
+}
+
 export class VoicePipeline {
-  private stt: STTPipeline | null;
-  private llm: LLMPipeline;
-  private tts: TTSPipeline | null;
+  // Factories for creating per-session instances
+  private sttFactory: BackendFactory<STTPipeline> | null;
+  private llmFactory: BackendFactory<LLMPipeline>;
+  private ttsFactory: BackendFactory<TTSPipeline> | null;
+
+  // Internal backends for pipeline's own use (e.g., local/browser mode)
+  private stt: STTPipeline | null = null;
+  private llm: LLMPipeline | null = null;
+  private tts: TTSPipeline | null = null;
+
   private systemPrompt: string;
   private textNormalizer = new TextNormalizer();
   private tools: Map<string, Tool> = new Map();
@@ -85,10 +103,13 @@ export class VoicePipeline {
   private toolFillerPhrases: string[];
   private fillerPhraseIndex = 0;
 
+  // Track if cache has been warmed
+  private initialized = false;
+
   constructor(config: VoicePipelineConfig) {
-    this.stt = config.stt ?? null;
-    this.llm = config.llm;
-    this.tts = config.tts ?? null;
+    this.sttFactory = config.stt ?? null;
+    this.llmFactory = config.llm;
+    this.ttsFactory = config.tts ?? null;
     this.systemPrompt = config.systemPrompt;
     this.toolFillerPhrases = config.toolFillerPhrases ?? DEFAULT_TOOL_FILLER_PHRASES;
 
@@ -141,10 +162,30 @@ export class VoicePipeline {
     return [{ role: 'system', content: this.systemPrompt }];
   }
 
+  /**
+   * Initialize the pipeline by warming the model cache.
+   * Creates instances and initializes them, which loads models into cache.
+   * These instances are also stored for the pipeline's own use (local/browser mode).
+   * Subsequent session instances will initialize instantly from cache.
+   */
   async initialize(onProgress?: ProgressCallback): Promise<void> {
+    // Create instances - these warm the cache and are kept for pipeline's own use
+    // Handle special case: if stt and llm use the same factory (e.g., CloudAudioLLM),
+    // create one instance and use it for both
+    if (this.hasSameSTTAndLLM()) {
+      const sharedInstance = this.llmFactory();
+      this.stt = sharedInstance as unknown as STTPipeline;
+      this.llm = sharedInstance;
+    } else {
+      this.stt = this.sttFactory?.() ?? null;
+      this.llm = this.llmFactory();
+    }
+    this.tts = this.ttsFactory?.() ?? null;
+
     const promises: Promise<void>[] = [this.llm.initialize(onProgress)];
 
-    if (this.stt) {
+    // Only initialize STT separately if it's a different instance
+    if (this.stt && !this.hasSameSTTAndLLM()) {
       promises.push(this.stt.initialize(onProgress));
     }
     if (this.tts) {
@@ -152,42 +193,102 @@ export class VoicePipeline {
     }
 
     await Promise.all(promises);
+    this.initialized = true;
   }
 
+  /**
+   * Check if the pipeline has been initialized (cache warmed).
+   */
   isReady(): boolean {
-    const sttReady = this.stt ? this.stt.isReady() : true;
-    const ttsReady = this.tts ? this.tts.isReady() : true;
-    return sttReady && this.llm.isReady() && ttsReady;
+    return this.initialized;
+  }
+
+  /**
+   * Create per-session backend instances.
+   * Call this when a new session (e.g., WebSocket connection) starts.
+   * Returns initialized backends ready for use.
+   */
+  async createSessionBackends(): Promise<SessionBackends> {
+    if (!this.initialized) {
+      throw new Error('VoicePipeline not initialized. Call initialize() first.');
+    }
+
+    // Create fresh instances for this session
+    // Handle special case: if stt and llm use the same factory, share the instance
+    let stt: STTPipeline | null;
+    let llm: LLMPipeline;
+
+    if (this.hasSameSTTAndLLM()) {
+      const sharedInstance = this.llmFactory();
+      stt = sharedInstance as unknown as STTPipeline;
+      llm = sharedInstance;
+    } else {
+      stt = this.sttFactory?.() ?? null;
+      llm = this.llmFactory();
+    }
+    const tts = this.ttsFactory?.() ?? null;
+
+    // Initialize (fast - uses cache)
+    const promises: Promise<void>[] = [llm.initialize()];
+    // Only initialize STT separately if it's a different instance
+    if (stt && !this.hasSameSTTAndLLM()) {
+      promises.push(stt.initialize());
+    }
+    if (tts) promises.push(tts.initialize());
+    await Promise.all(promises);
+
+    return { stt, llm, tts };
+  }
+
+  /**
+   * Check if this pipeline has the same factory for STT and LLM.
+   * Used by handlers to detect CloudAudioLLM pattern where one instance serves both roles.
+   */
+  hasSameSTTAndLLM(): boolean {
+    return this.sttFactory !== null && (this.sttFactory as unknown) === (this.llmFactory as unknown);
   }
 
   /**
    * Check if pipeline has STT configured
    */
   hasSTT(): boolean {
-    return this.stt !== null;
+    return this.sttFactory !== null;
   }
 
   /**
    * Check if pipeline has TTS configured
    */
   hasTTS(): boolean {
-    return this.tts !== null;
+    return this.ttsFactory !== null;
   }
 
   /**
    * Process text input through LLM (and optionally TTS)
    * Returns new messages to append to history
+   * @param backends - Optional per-session backends. If not provided, uses pipeline's internal backends.
    */
   async processText(
     text: string,
     context: ConversationContext,
-    callbacks: Omit<VoicePipelineCallbacks, 'onTranscript'>
+    callbacks: Omit<VoicePipelineCallbacks, 'onTranscript'>,
+    backends?: SessionBackends
   ): Promise<Message[]> {
+    const llm = backends?.llm ?? this.llm;
+    const tts = backends?.tts ?? this.tts;
+
+    if (!llm) {
+      callbacks.onError(new Error('Pipeline not initialized. Call initialize() first.'));
+      return [];
+    }
+
     try {
+      // Create a fresh TurnContext for this turn
+      const turn = this.createTurnContext(context);
+
       const newMessages = await this.processTranscript(text, context, {
         ...callbacks,
         onTranscript: () => {},
-      });
+      }, llm, tts, turn);
       callbacks.onComplete();
       return newMessages;
     } catch (error) {
@@ -197,28 +298,51 @@ export class VoicePipeline {
   }
 
   /**
+   * Create a TurnContext for a single turn through the pipeline
+   */
+  private createTurnContext(context: ConversationContext): TurnContext {
+    return {
+      history: context.history,
+      tools: this.toolDefinitions.length > 0 ? this.toolDefinitions : undefined,
+    };
+  }
+
+  /**
    * Process audio input through STT → LLM → TTS
    * Returns new messages to append to history
+   * @param backends - Optional per-session backends. If not provided, uses pipeline's internal backends.
    */
   async processAudio(
     audio: Float32Array,
     context: ConversationContext,
-    callbacks: VoicePipelineCallbacks
+    callbacks: VoicePipelineCallbacks,
+    backends?: SessionBackends
   ): Promise<Message[]> {
-    if (!this.stt) {
+    const stt = backends?.stt ?? this.stt;
+    const llm = backends?.llm ?? this.llm;
+    const tts = backends?.tts ?? this.tts;
+
+    if (!this.sttFactory) {
       callbacks.onError(new Error('No STT backend configured. Use processText() instead.'));
+      return [];
+    }
+    if (!stt || !llm) {
+      callbacks.onError(new Error('Pipeline not initialized. Call initialize() first.'));
       return [];
     }
 
     try {
-      const transcript = await this.stt.transcribe(audio);
+      // Create a fresh TurnContext for this turn
+      const turn = this.createTurnContext(context);
+
+      const transcript = await stt.transcribe(audio, turn);
       if (!transcript.trim()) {
         callbacks.onError(new Error('Could not transcribe audio'));
         return [];
       }
       callbacks.onTranscript(transcript);
 
-      const newMessages = await this.processTranscript(transcript, context, callbacks);
+      const newMessages = await this.processTranscript(transcript, context, callbacks, llm, tts, turn);
       callbacks.onComplete();
       return newMessages;
     } catch (error) {
@@ -233,7 +357,10 @@ export class VoicePipeline {
   private async processTranscript(
     transcript: string,
     context: ConversationContext,
-    callbacks: VoicePipelineCallbacks
+    callbacks: VoicePipelineCallbacks,
+    llm: LLMPipeline,
+    tts: TTSPipeline | null,
+    turn?: TurnContext
   ): Promise<Message[]> {
     const newMessages: Message[] = [];
 
@@ -243,7 +370,7 @@ export class VoicePipeline {
     newMessages.push(userMessage);
 
     // Generate response with context
-    const responseMessages = await this.generateResponse(context, callbacks);
+    const responseMessages = await this.generateResponse(context, callbacks, llm, tts, turn);
     newMessages.push(...responseMessages);
 
     return newMessages;
@@ -254,10 +381,13 @@ export class VoicePipeline {
    */
   private async generateResponse(
     context: ConversationContext,
-    callbacks: VoicePipelineCallbacks
+    callbacks: VoicePipelineCallbacks,
+    llm: LLMPipeline,
+    tts: TTSPipeline | null,
+    turn?: TurnContext
   ): Promise<Message[]> {
     const newMessages: Message[] = [];
-    const useNativeTools = (this.llm.supportsTools?.() ?? false) && this.toolDefinitions.length > 0;
+    const useNativeTools = (llm.supportsTools?.() ?? false) && this.toolDefinitions.length > 0;
     const hasTools = this.toolDefinitions.length > 0;
 
     // Tool execution loop
@@ -271,7 +401,10 @@ export class VoicePipeline {
         context,
         callbacks,
         useNativeTools,
-        shouldStream  // Enable streaming for native tools too
+        shouldStream,  // Enable streaming for native tools too
+        llm,
+        tts,
+        turn
       );
 
       const toolCalls = useNativeTools
@@ -282,7 +415,7 @@ export class VoicePipeline {
         // Only call streamResponse if we didn't stream during generation
         // Native tools stream during generation, so skip here
         if (!shouldStream) {
-          await this.streamResponse(result.content, callbacks);
+          await this.streamResponse(result.content, callbacks, tts);
         }
 
         const assistantMsg: Message = { role: 'assistant', content: result.content };
@@ -295,7 +428,7 @@ export class VoicePipeline {
       if (this.toolFillerPhrases.length > 0) {
         const fillerPhrase = this.toolFillerPhrases[this.fillerPhraseIndex % this.toolFillerPhrases.length];
         this.fillerPhraseIndex++;
-        await this.streamResponse(fillerPhrase + ' ', callbacks);
+        await this.streamResponse(fillerPhrase + ' ', callbacks, tts);
       }
 
       const assistantContent = useNativeTools ? result.content : '';
@@ -355,17 +488,17 @@ export class VoicePipeline {
   /**
    * Stream a response to the client with optional TTS
    */
-  private async streamResponse(content: string, callbacks: VoicePipelineCallbacks): Promise<void> {
+  private async streamResponse(content: string, callbacks: VoicePipelineCallbacks, tts: TTSPipeline | null): Promise<void> {
     if (!content) return;
 
     // Stream text chunks
     callbacks.onResponseChunk(content);
 
     // TTS if available
-    if (this.tts) {
+    if (tts) {
       const normalizedText = this.textNormalizer.normalize(content);
       if (normalizedText) {
-        const playable = await this.tts.synthesize(normalizedText);
+        const playable = await tts.synthesize(normalizedText);
         callbacks.onAudio(playable);
       }
     }
@@ -378,26 +511,29 @@ export class VoicePipeline {
     context: ConversationContext,
     callbacks: VoicePipelineCallbacks,
     useNativeTools: boolean,
-    shouldStream: boolean
+    shouldStream: boolean,
+    llm: LLMPipeline,
+    tts: TTSPipeline | null,
+    turn?: TurnContext
   ): Promise<{ content: string; toolCalls?: ToolCall[] }> {
     const tools = this.toolDefinitions.length > 0 ? this.toolDefinitions : undefined;
 
-    if (shouldStream && this.tts) {
-      return this.generateWithStreamingTTS(context, callbacks, useNativeTools);
+    if (shouldStream && tts) {
+      return this.generateWithStreamingTTS(context, callbacks, useNativeTools, llm, tts, turn);
     }
 
     if (shouldStream) {
-      const result = await this.llm.generate(context.history, {
+      const result = await llm.generate(context.history, {
         tools,
-        conversationId: context.conversationId,
         onToken: (token) => callbacks.onResponseChunk(token),
+        turn,
       });
       return { content: result.content, toolCalls: result.toolCalls };
     }
 
-    const result = await this.llm.generate(context.history, {
+    const result = await llm.generate(context.history, {
       tools,
-      conversationId: context.conversationId,
+      turn,
     });
     return { content: result.content, toolCalls: result.toolCalls };
   }
@@ -408,7 +544,10 @@ export class VoicePipeline {
   private async generateWithStreamingTTS(
     context: ConversationContext,
     callbacks: VoicePipelineCallbacks,
-    _useNativeTools: boolean
+    _useNativeTools: boolean,
+    llm: LLMPipeline,
+    tts: TTSPipeline,
+    turn?: TurnContext
   ): Promise<{ content: string; toolCalls?: ToolCall[] }> {
     const tools = this.toolDefinitions.length > 0 ? this.toolDefinitions : undefined;
     let sentenceBuffer = '';
@@ -429,7 +568,7 @@ export class VoicePipeline {
 
     const queueTTS = (sentence: string, index: number) => {
       const normalizedText = this.textNormalizer.normalize(sentence);
-      const promise = this.tts!
+      const promise = tts
         .synthesize(normalizedText)
         .then((playable) => {
           playableQueue.set(index, playable);
@@ -442,9 +581,9 @@ export class VoicePipeline {
       ttsPromises.push(promise);
     };
 
-    const result = await this.llm.generate(context.history, {
+    const result = await llm.generate(context.history, {
       tools,
-      conversationId: context.conversationId,
+      turn,
       onToken: (token) => {
         callbacks.onResponseChunk(token);
         sentenceBuffer += token;
