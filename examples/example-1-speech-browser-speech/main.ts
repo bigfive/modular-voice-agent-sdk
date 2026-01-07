@@ -12,8 +12,8 @@
  * For Brave/Firefox, use the browser-browser-speech example instead.
  */
 
-import { VoiceClient, createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'voice-pipeline/client';
-import { TransformersLLM } from 'voice-pipeline';
+import { VoiceClient, createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'modular-voice-agent-sdk/client';
+import { TransformersLLM } from 'modular-voice-agent-sdk';
 import {
   getUIElements,
   createMessageHelpers,

@@ -21,16 +21,16 @@
  * Run: npm run dev:speech-native
  */
 
-import { VoicePipeline } from 'voice-pipeline';
-import { NativeLLM, getBinaryPath, getModelPath, getCacheDir } from 'voice-pipeline/native';
-import { createPipelineHandler } from 'voice-pipeline/server';
+import { VoicePipeline } from 'modular-voice-agent-sdk';
+import { NativeLLM, getBinaryPath, getModelPath, getCacheDir } from 'modular-voice-agent-sdk/native';
+import { createPipelineHandler } from 'modular-voice-agent-sdk/server';
 import { startWebSocketServer, logPipelineInfo, demoTools } from '../shared';
 
 const PORT = 3104;
 
 // Model paths - must match models.json in this directory
-// Run: npx voice-pipeline setup examples/example-5-speech-native-speech/models.json
-// Run: npx voice-pipeline setup --binaries-only
+// Run: npx modular-voice-agent-sdk setup examples/example-5-speech-native-speech/models.json
+// Run: npx modular-voice-agent-sdk setup --binaries-only
 const CONFIG = {
   llm: {
     binaryPath: getBinaryPath('llama-completion'),

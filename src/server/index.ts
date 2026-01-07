@@ -1,13 +1,13 @@
 /**
- * Voice Pipeline Server Utilities
+ * Modular Voice Agent SDK - Server Utilities
  *
  * Framework-agnostic handlers for building voice assistant servers.
  * Works with any WebSocket library (ws, Socket.io, Bun, Deno, etc.)
  *
  * @example
  * ```typescript
- * import { VoicePipeline } from 'voice-pipeline';
- * import { createPipelineHandler } from 'voice-pipeline/server';
+ * import { VoicePipeline } from 'modular-voice-agent-sdk';
+ * import { createPipelineHandler } from 'modular-voice-agent-sdk/server';
  * import { WebSocketServer } from 'ws';
  *
  * const pipeline = new VoicePipeline({ stt, llm, tts, systemPrompt });

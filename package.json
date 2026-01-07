@@ -1,6 +1,6 @@
 {
-  "name": "voice-pipeline",
-  "version": "5.1.0",
+  "name": "modular-voice-agent-sdk",
+  "version": "1.0.0",
   "description": "Isomorphic STT → LLM → TTS pipeline library for AI voice agents and voice assistants",
   "type": "module",
   "main": "./dist/index.js",
@@ -29,7 +29,7 @@
     }
   },
   "bin": {
-    "voice-pipeline": "./dist/cli.js"
+    "mvas": "./dist/cli.js"
   },
   "files": [
     "dist",
@@ -80,11 +80,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bigfive/voice-pipeline.git"
+    "url": "https://github.com/bigfive/modular-voice-agent-sdk.git"
   },
   "author": "Jonathan Williams <bigfive@users.noreply.github.com>",
-  "homepage": "https://github.com/bigfive/voice-pipeline#readme",
+  "homepage": "https://github.com/bigfive/modular-voice-agent-sdk#readme",
   "bugs": {
-    "url": "https://github.com/bigfive/voice-pipeline/issues"
+    "url": "https://github.com/bigfive/modular-voice-agent-sdk/issues"
   }
 }

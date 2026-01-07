@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * Voice Pipeline CLI
+ * Modular Voice Agent SDK CLI
  *
  * Usage:
- *   npx voice-pipeline setup <config.json>   - Download models from config file
- *   npx voice-pipeline setup --binaries-only - Set up native binaries only
- *   npx voice-pipeline help                  - Show help
+ *   npx mvas setup <config.json>   - Download models from config file
+ *   npx mvas setup --binaries-only - Set up native binaries only
+ *   npx mvas help                  - Show help
  */
 
 import { spawn, execSync, spawnSync } from 'child_process';
@@ -40,7 +40,7 @@ interface SetupConfig {
 // ============ Cache Paths ============
 
 function getCacheDir(): string {
-  return process.env.VOICE_PIPELINE_CACHE || join(homedir(), '.cache', 'voice-pipeline');
+  return process.env.MVAS_CACHE || join(homedir(), '.cache', 'mvas');
 }
 
 function getModelsDir(): string {
@@ -279,7 +279,7 @@ async function setupFromConfig(configPath: string): Promise<void> {
   const modelsDir = getModelsDir();
   mkdirSync(modelsDir, { recursive: true });
 
-  console.log('Voice Pipeline Setup');
+  console.log('Modular Voice Agent SDK Setup');
   console.log('====================');
   console.log(`Config: ${configPath}`);
   console.log(`Models directory: ${modelsDir}`);
@@ -311,7 +311,7 @@ async function setupFromConfig(configPath: string): Promise<void> {
   }
 
   console.log('\n💡 To set up native binaries (whisper-cli, llama-completion, sherpa-onnx):');
-  console.log('   npx voice-pipeline setup --binaries-only');
+  console.log('   npx mvas setup --binaries-only');
 }
 
 // ============ Binaries Setup ============
@@ -361,7 +361,7 @@ async function setupBinaries(): Promise<void> {
 
 function printHelp(): void {
   console.log(`
-voice-pipeline - Isomorphic STT → LLM → TTS pipeline
+mvas - Modular Voice Agent SDK CLI
 
 Commands:
   setup <config.json>     Download models specified in config file
@@ -403,13 +403,13 @@ Features:
   • Skips already-downloaded valid files
 
 Examples:
-  npx voice-pipeline setup ./models.json           # Download models from config
-  npx voice-pipeline setup --binaries-only         # Just set up native binaries
+  npx mvas setup ./models.json           # Download models from config
+  npx mvas setup --binaries-only         # Just set up native binaries
 
 Cache location: ${getCacheDir()}
-  Override with: export VOICE_PIPELINE_CACHE=/path/to/cache
+  Override with: export MVAS_CACHE=/path/to/cache
 
-For more info: https://github.com/your-username/voice-pipeline
+For more info: https://github.com/bigfive/modular-voice-agent-sdk
 `);
 }
 
@@ -427,8 +427,8 @@ async function main(): Promise<void> {
         console.error('Error: setup requires a config file or --binaries-only flag');
         console.error('');
         console.error('Usage:');
-        console.error('  npx voice-pipeline setup <config.json>');
-        console.error('  npx voice-pipeline setup --binaries-only');
+        console.error('  npx mvas setup <config.json>');
+        console.error('  npx mvas setup --binaries-only');
         process.exit(1);
       }
 

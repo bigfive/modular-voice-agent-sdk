@@ -1,11 +1,11 @@
 /**
- * Voice Pipeline Browser Client
+ * Modular Voice Agent SDK - Browser Client
  *
  * High-level SDK for building voice assistant browser clients.
  *
  * @example
  * ```typescript
- * import { VoiceClient } from 'voice-pipeline/client';
+ * import { VoiceClient } from 'modular-voice-agent-sdk/client';
  *
  * const client = new VoiceClient({ serverUrl: 'ws://localhost:8080' });
  *

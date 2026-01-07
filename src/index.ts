@@ -1,5 +1,5 @@
 /**
- * Voice Pipeline Library
+ * Modular Voice Agent SDK
  * Isomorphic STT → LLM → TTS pipeline
  */
 

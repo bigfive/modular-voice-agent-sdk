@@ -5,7 +5,7 @@
  * In a real application, you'd implement actual API calls.
  */
 
-import type { Tool } from 'voice-pipeline';
+import type { Tool } from 'modular-voice-agent-sdk';
 
 // ============ Time Tool ============
 

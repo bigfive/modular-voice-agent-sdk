@@ -9,16 +9,16 @@
  * Run: npm run dev:native-transformers
  */
 
-import { VoicePipeline, TransformersLLM } from 'voice-pipeline';
-import { NativeSTT, getBinaryPath, getModelPath, getCacheDir } from 'voice-pipeline/native';
-import { createPipelineHandler } from 'voice-pipeline/server';
+import { VoicePipeline, TransformersLLM } from 'modular-voice-agent-sdk';
+import { NativeSTT, getBinaryPath, getModelPath, getCacheDir } from 'modular-voice-agent-sdk/native';
+import { createPipelineHandler } from 'modular-voice-agent-sdk/server';
 import { startWebSocketServer, logPipelineInfo } from '../shared';
 
 const PORT = 3102;
 
 // Model paths - must match models.json in this directory
-// Run: npx voice-pipeline setup examples/example-7-native-transformers-speech/models.json
-// Run: npx voice-pipeline setup --binaries-only
+// Run: npx modular-voice-agent-sdk setup examples/example-7-native-transformers-speech/models.json
+// Run: npx modular-voice-agent-sdk setup --binaries-only
 const CONFIG = {
   stt: {
     binaryPath: getBinaryPath('whisper-cli'),

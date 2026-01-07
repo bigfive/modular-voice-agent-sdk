@@ -969,7 +969,7 @@ export class VoiceClient {
           '  2. Use TransformersSTT for local transcription (works in all browsers with WebGPU)\n' +
           '  3. Use server-side STT by setting stt: null with a serverUrl\n\n' +
           'Example with TransformersSTT:\n' +
-          '  import { TransformersSTT } from "voice-pipeline";\n' +
+          '  import { TransformersSTT } from "modular-voice-agent-sdk";\n' +
           '  const client = new VoiceClient({ stt: new TransformersSTT({ model: "Xenova/whisper-tiny" }), ... })'
         );
       }

@@ -1,18 +1,18 @@
 /**
- * Cache utilities for voice-pipeline
- * Models and binaries are stored in ~/.cache/voice-pipeline/ by default
+ * Cache utilities for modular-voice-agent-sdk
+ * Models and binaries are stored in ~/.cache/mvas/ by default
  */
 
 import { homedir } from 'os';
 import { join } from 'path';
 
 /**
- * Get the cache directory for voice-pipeline assets.
- * Default: ~/.cache/voice-pipeline
- * Override with VOICE_PIPELINE_CACHE environment variable.
+ * Get the cache directory for mvas assets.
+ * Default: ~/.cache/mvas
+ * Override with MVAS_CACHE environment variable.
  */
 export function getCacheDir(): string {
-  return process.env.VOICE_PIPELINE_CACHE || join(homedir(), '.cache', 'voice-pipeline');
+  return process.env.MVAS_CACHE || join(homedir(), '.cache', 'mvas');
 }
 
 /**

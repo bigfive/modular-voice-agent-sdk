@@ -4,7 +4,7 @@
  * Sets up button and keyboard controls for recording.
  */
 
-import type { VoiceClient } from 'voice-pipeline/client';
+import type { VoiceClient } from 'modular-voice-agent-sdk/client';
 import type { UIElements, MessageHelpers } from './client-ui';
 
 // ============ Types ============

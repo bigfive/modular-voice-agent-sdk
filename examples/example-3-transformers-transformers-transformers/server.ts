@@ -5,8 +5,8 @@
  * Client sends audio, server returns audio.
  */
 
-import { VoicePipeline, TransformersSTT, TransformersLLM, TransformersTTS } from 'voice-pipeline';
-import { createPipelineHandler } from 'voice-pipeline/server';
+import { VoicePipeline, TransformersSTT, TransformersLLM, TransformersTTS } from 'modular-voice-agent-sdk';
+import { createPipelineHandler } from 'modular-voice-agent-sdk/server';
 import { startWebSocketServer, logPipelineInfo } from '../shared';
 
 const PORT = 3100;

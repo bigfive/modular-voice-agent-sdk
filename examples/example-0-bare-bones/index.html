@@ -7,8 +7,8 @@
   <button id="talkBtn" style="font-size: 24px;" disabled />
 
   <script type="module">
-    import { createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'voice-pipeline/client';
-    import { TransformersLLM } from 'voice-pipeline';
+    import { createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'modular-voice-agent-sdk/client';
+    import { TransformersLLM } from 'modular-voice-agent-sdk';
 
     const client = createVoiceClient({
       stt: new WebSpeechSTT(),

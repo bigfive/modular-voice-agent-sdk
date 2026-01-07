@@ -14,10 +14,10 @@
  * Run: npm run example9
  */
 
-import { VoicePipeline } from 'voice-pipeline';
-import { NativeSTT, NativeTTS, getBinaryPath, getModelPath, getCacheDir } from 'voice-pipeline/native';
-import { CloudLLM } from 'voice-pipeline/cloud';
-import { createPipelineHandler } from 'voice-pipeline/server';
+import { VoicePipeline } from 'modular-voice-agent-sdk';
+import { NativeSTT, NativeTTS, getBinaryPath, getModelPath, getCacheDir } from 'modular-voice-agent-sdk/native';
+import { CloudLLM } from 'modular-voice-agent-sdk/cloud';
+import { createPipelineHandler } from 'modular-voice-agent-sdk/server';
 import { startWebSocketServer, logPipelineInfo } from '../shared';
 
 const PORT = 3106;
@@ -30,8 +30,8 @@ if (!OPENAI_API_KEY) {
 }
 
 // Model paths - must match models.json in this directory
-// Run: npx voice-pipeline setup examples/example-9-native-cloud-native/models.json
-// Run: npx voice-pipeline setup --binaries-only
+// Run: npx modular-voice-agent-sdk setup examples/example-9-native-cloud-native/models.json
+// Run: npx modular-voice-agent-sdk setup --binaries-only
 const CONFIG = {
   stt: {
     binaryPath: getBinaryPath('whisper-cli'),

@@ -12,7 +12,7 @@
  * - Lower bandwidth (no audio sent back from server)
  */
 
-import { createVoiceClient, WebSpeechTTS } from 'voice-pipeline/client';
+import { createVoiceClient, WebSpeechTTS } from 'modular-voice-agent-sdk/client';
 import {
   getUIElements,
   createMessageHelpers,

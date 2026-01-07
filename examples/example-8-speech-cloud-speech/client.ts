@@ -14,7 +14,7 @@
  * NOTE: WebSpeech STT only works in Chrome, Edge, and Safari.
  */
 
-import { VoiceClient, createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'voice-pipeline/client';
+import { VoiceClient, createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'modular-voice-agent-sdk/client';
 import {
   getUIElements,
   createMessageHelpers,

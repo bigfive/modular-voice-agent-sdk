@@ -1,6 +1,6 @@
 # Usage Guide
 
-Detailed documentation for voice-pipeline. For a quick overview, see [README.md](./README.md).
+Detailed documentation for modular-voice-agent-sdk. For a quick overview, see [README.md](./README.md).
 
 ## Two Ways to Use
 
@@ -9,8 +9,8 @@ Detailed documentation for voice-pipeline. For a quick overview, see [README.md]
 Create a `VoiceClient` with all components running locally in the browser. No server needed.
 
 ```typescript
-import { createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'voice-pipeline/client';
-import { TransformersLLM } from 'voice-pipeline';
+import { createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'modular-voice-agent-sdk/client';
+import { TransformersLLM } from 'modular-voice-agent-sdk';
 
 const client = createVoiceClient({
   stt: new WebSpeechSTT(),
@@ -182,7 +182,7 @@ For integrating with any WebSocket server:
 
 ```typescript
 import { WebSocketServer } from 'ws';
-import { createPipelineHandler } from 'voice-pipeline/server';
+import { createPipelineHandler } from 'modular-voice-agent-sdk/server';
 
 const handler = createPipelineHandler(pipeline);
 const wss = new WebSocketServer({ port: 3100 });
@@ -205,8 +205,8 @@ wss.on('connection', (ws) => {
 Everything runs in the browser:
 
 ```typescript
-import { createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'voice-pipeline/client';
-import { TransformersLLM } from 'voice-pipeline';
+import { createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'modular-voice-agent-sdk/client';
+import { TransformersLLM } from 'modular-voice-agent-sdk';
 
 const client = createVoiceClient({
   stt: new WebSpeechSTT({ language: 'en-US' }),
@@ -271,7 +271,7 @@ const pipeline = new VoicePipeline({
 
 **Server:**
 ```typescript
-import { CloudLLM } from 'voice-pipeline/cloud';
+import { CloudLLM } from 'modular-voice-agent-sdk/cloud';
 
 const pipeline = new VoicePipeline({
   stt: new NativeSTT({ model: 'base.en' }),
@@ -295,7 +295,7 @@ Give your voice assistant the ability to take actions — check the weather, con
 ### Defining a Tool
 
 ```typescript
-import { Tool } from 'voice-pipeline';
+import { Tool } from 'modular-voice-agent-sdk';
 
 const getWeather: Tool = {
   name: 'get_weather',
@@ -353,8 +353,8 @@ You don't need to do anything different — just pass `tools` and the backend ha
 ### Complete Example
 
 ```typescript
-import { VoicePipeline, Tool } from 'voice-pipeline';
-import { CloudLLM } from 'voice-pipeline/cloud';
+import { VoicePipeline, Tool } from 'modular-voice-agent-sdk';
+import { CloudLLM } from 'modular-voice-agent-sdk/cloud';
 
 const tools: Tool[] = [
   {
@@ -540,7 +540,7 @@ This is useful for zero-downtime upgrades where old and new clients coexist, but
 
 ```typescript
 // Main library - pipeline + Transformers.js backends
-import { VoicePipeline, TransformersSTT, TransformersLLM, TransformersTTS } from 'voice-pipeline';
+import { VoicePipeline, TransformersSTT, TransformersLLM, TransformersTTS } from 'modular-voice-agent-sdk';
 
 // Client SDK - unified browser interface
 import {
@@ -548,10 +548,10 @@ import {
   VoiceClient,
   WebSpeechSTT,
   WebSpeechTTS
-} from 'voice-pipeline/client';
+} from 'modular-voice-agent-sdk/client';
 
 // Server utilities - WebSocket handler
-import { createPipelineHandler } from 'voice-pipeline/server';
+import { createPipelineHandler } from 'modular-voice-agent-sdk/server';
 
 // Native backends (server-only)
 import {
@@ -560,8 +560,8 @@ import {
   NativeTTS,
   defaultPaths,
   getCacheDir
-} from 'voice-pipeline/native';
+} from 'modular-voice-agent-sdk/native';
 
 // Cloud backends (server-only)
-import { CloudLLM } from 'voice-pipeline/cloud';
+import { CloudLLM } from 'modular-voice-agent-sdk/cloud';
 ```

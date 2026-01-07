@@ -1,12 +1,12 @@
-# Voice Pipeline
+# Modular Voice Agent SDK
 
 Build voice assistants without the plumbing. One SDK, any backend, same interface.
 
 Voice apps either need expensive multimodal models, or a pipeline of three pieces: speech-to-text, an LLM, text-to-speech. Wiring them together means audio capture code, streaming logic, WebSocket boilerplate. This library handles all of that.
 
 ```typescript
-import { createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'voice-pipeline/client';
-import { TransformersLLM } from 'voice-pipeline';
+import { createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'modular-voice-agent-sdk/client';
+import { TransformersLLM } from 'modular-voice-agent-sdk';
 
 const client = createVoiceClient({
   stt: new WebSpeechSTT(),
@@ -74,7 +74,7 @@ npm run example0  # or example1, example2, etc.
 ## Install
 
 ```bash
-npm install voice-pipeline
+npm install modular-voice-agent-sdk
 ```
 
 For native backends (whisper.cpp, llama.cpp, sherpa-onnx):
@@ -84,7 +84,7 @@ For native backends (whisper.cpp, llama.cpp, sherpa-onnx):
 brew install whisper-cpp llama.cpp
 
 # Download models
-npx voice-pipeline setup
+npx mvas setup
 ```
 
 For cloud LLMs:

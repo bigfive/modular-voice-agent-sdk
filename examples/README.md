@@ -1,4 +1,4 @@
-# Voice Pipeline Examples
+# Modular Voice Agent SDK Examples
 
 Interactive examples demonstrating all the different configuration modes.
 
@@ -155,7 +155,7 @@ Naming convention: `{stt}-{llm}-{tts}` where each component is:
 brew install whisper-cpp llama.cpp
 
 # Download models
-npx voice-pipeline setup
+npx mvas setup
 ```
 
 ### For Transformers.js Server Examples

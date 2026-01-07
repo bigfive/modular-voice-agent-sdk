@@ -7,7 +7,7 @@
  * - TTS: SpeechT5 (server)
  */
 
-import { createVoiceClient } from 'voice-pipeline/client';
+import { createVoiceClient } from 'modular-voice-agent-sdk/client';
 import {
   getUIElements,
   createMessageHelpers,

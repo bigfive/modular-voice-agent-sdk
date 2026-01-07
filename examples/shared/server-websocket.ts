@@ -6,7 +6,7 @@
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
-import type { PipelineHandler, PipelineSession } from 'voice-pipeline/server';
+import type { PipelineHandler, PipelineSession } from 'modular-voice-agent-sdk/server';
 
 // ============ Types ============
 

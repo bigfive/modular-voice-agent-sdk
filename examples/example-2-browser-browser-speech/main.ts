@@ -10,8 +10,8 @@
  * Works in all browsers with WebGPU support (Chrome, Edge, Safari, Brave, Firefox 133+).
  */
 
-import { VoiceClient, createVoiceClient, WebSpeechTTS } from 'voice-pipeline/client';
-import { TransformersSTT, TransformersLLM } from 'voice-pipeline';
+import { VoiceClient, createVoiceClient, WebSpeechTTS } from 'modular-voice-agent-sdk/client';
+import { TransformersSTT, TransformersLLM } from 'modular-voice-agent-sdk';
 import {
   getUIElements,
   createMessageHelpers,

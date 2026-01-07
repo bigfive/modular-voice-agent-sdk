@@ -17,9 +17,9 @@
  * Run: npm run example8
  */
 
-import { VoicePipeline } from 'voice-pipeline';
-import { CloudLLM } from 'voice-pipeline/cloud';
-import { createPipelineHandler } from 'voice-pipeline/server';
+import { VoicePipeline } from 'modular-voice-agent-sdk';
+import { CloudLLM } from 'modular-voice-agent-sdk/cloud';
+import { createPipelineHandler } from 'modular-voice-agent-sdk/server';
 import { startWebSocketServer, logPipelineInfo, demoTools } from '../shared';
 
 const PORT = 3105;

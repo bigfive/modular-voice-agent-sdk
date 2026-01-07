@@ -2,8 +2,8 @@
  * Test script for native backends (whisper.cpp, llama.cpp, sherpa-onnx)
  * Run with: npx tsx tests/test-native.ts
  *
- * Expects binaries and models in ~/.cache/voice-pipeline/
- * Run `npx voice-pipeline setup` to download them.
+ * Expects binaries and models in ~/.cache/mvas/
+ * Run `npx mvas setup` to download them.
  */
 
 import { existsSync, writeFileSync } from 'fs';

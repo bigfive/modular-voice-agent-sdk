@@ -5,16 +5,16 @@
  * Client sends audio, server returns audio.
  */
 
-import { VoicePipeline } from 'voice-pipeline';
-import { NativeSTT, NativeLLM, NativeTTS, getBinaryPath, getModelPath, getCacheDir } from 'voice-pipeline/native';
-import { createPipelineHandler } from 'voice-pipeline/server';
+import { VoicePipeline } from 'modular-voice-agent-sdk';
+import { NativeSTT, NativeLLM, NativeTTS, getBinaryPath, getModelPath, getCacheDir } from 'modular-voice-agent-sdk/native';
+import { createPipelineHandler } from 'modular-voice-agent-sdk/server';
 import { startWebSocketServer, logPipelineInfo } from '../shared';
 
 const PORT = 3101;
 
 // Model paths - must match models.json in this directory
-// Run: npx voice-pipeline setup examples/example-4-native-native-native/models.json
-// Run: npx voice-pipeline setup --binaries-only
+// Run: npx modular-voice-agent-sdk setup examples/example-4-native-native-native/models.json
+// Run: npx modular-voice-agent-sdk setup --binaries-only
 const CONFIG = {
   stt: {
     binaryPath: getBinaryPath('whisper-cli'),

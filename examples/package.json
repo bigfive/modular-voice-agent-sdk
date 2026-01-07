@@ -1,13 +1,13 @@
 {
-  "name": "voice-pipeline-examples",
+  "name": "modular-voice-agent-sdk-examples",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "example0": "vite --open /example-0-bare-bones/",
     "setup": "npm run setup:binaries && npm run setup:models",
-    "setup:binaries": "voice-pipeline setup --binaries-only",
-    "setup:models": "voice-pipeline setup example-4-native-native-native/models.json && voice-pipeline setup example-5-speech-native-speech/models.json && voice-pipeline setup example-7-native-transformers-speech/models.json && voice-pipeline setup example-9-native-cloud-native/models.json",
+    "setup:binaries": "mvas setup --binaries-only",
+    "setup:models": "mvas setup example-4-native-native-native/models.json && mvas setup example-5-speech-native-speech/models.json && mvas setup example-7-native-transformers-speech/models.json && mvas setup example-9-native-cloud-native/models.json",
     "example1": "vite --open /example-1-speech-browser-speech/",
     "example2": "vite --open /example-2-browser-browser-speech/",
     "example3": "concurrently -k -n vite,server -c blue,green \"vite --open /example-3-transformers-transformers-transformers/\" \"tsx watch example-3-transformers-transformers-transformers/server.ts\"",
@@ -21,7 +21,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "voice-pipeline": "file:..",
+    "modular-voice-agent-sdk": "file:..",
     "ws": "^8.18.0"
   },
   "devDependencies": {
