@@ -39,7 +39,7 @@ const CONFIG = {
     temperature: 0.7,
     gpuLayers: 0,  // Set higher if you have GPU memory (e.g., 35 for ~16GB VRAM)
   },
-  systemPrompt: `You are a helpful voice assistant. Keep responses brief—1-2 sentences. Speak naturally.`,
+  systemPrompt: `You are a helpful voice assistant. Keep responses brief—1-2 sentences. Speak naturally. /no_think`,
 };
 
 async function main(): Promise<void> {
