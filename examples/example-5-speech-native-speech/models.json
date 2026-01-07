@@ -3,7 +3,7 @@
     "llm": {
       "url": "https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf",
       "filename": "qwen3-14b-q4_k_m.gguf",
-      "size": 9426671872
+      "size": 9001752960
     }
   }
 }

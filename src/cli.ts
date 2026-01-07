@@ -30,11 +30,7 @@ interface ModelConfig {
 }
 
 interface SetupConfig {
-  models: {
-    stt?: ModelConfig;
-    llm?: ModelConfig;
-    tts?: ModelConfig;
-  };
+  models: Record<string, ModelConfig>;
 }
 
 // ============ Cache Paths ============
@@ -123,15 +119,24 @@ function downloadWithCurl(url: string, destPath: string): Promise<void> {
     // -L: follow redirects
     // -C -: auto-resume from where it left off
     // --progress-bar: show progress
+    // -f: fail on HTTP errors (4xx, 5xx)
     // -o: output file
+    // --write-out: output HTTP code for debugging
     const child = spawn('curl', [
       '-L',
       '-C', '-',
       '--progress-bar',
+      '-f',  // Fail on HTTP errors
       '-o', destPath,
+      '--write-out', '\\nHTTP_CODE:%{http_code}\\n',
       url
     ], {
-      stdio: ['inherit', 'inherit', 'inherit'],
+      stdio: ['inherit', 'inherit', 'pipe'],  // Capture stderr for error info
+    });
+
+    let stderrData = '';
+    child.stderr?.on('data', (data) => {
+      stderrData += data.toString();
     });
 
     child.on('close', (code) => {
@@ -139,8 +144,13 @@ function downloadWithCurl(url: string, destPath: string): Promise<void> {
         resolve();
       } else if (code === 33) {
         // curl exit 33 = range request not supported, but file may be complete
-        // Check if this is because file is already complete
         resolve();
+      } else if (code === 22) {
+        // curl exit 22 = HTTP error (when -f is used)
+        // Try to extract HTTP code from stderr
+        const httpMatch = stderrData.match(/HTTP_CODE:(\d+)/);
+        const httpCode = httpMatch ? httpMatch[1] : 'unknown';
+        reject(new Error(`HTTP error ${httpCode} - URL may be invalid or not found`));
       } else {
         reject(new Error(`curl exited with code ${code}`));
       }
@@ -284,12 +294,38 @@ async function setupFromConfig(configPath: string): Promise<void> {
   console.log(`Config: ${configPath}`);
   console.log(`Models directory: ${modelsDir}`);
 
-  const modelTypes = ['stt', 'llm', 'tts'] as const;
+  // Iterate over ALL model keys in config (not just stt/llm/tts)
+  const modelTypes = Object.keys(config.models);
+
+  if (modelTypes.length === 0) {
+    console.error('Error: No models defined in config');
+    process.exit(1);
+  }
+
+  let downloadedCount = 0;
+  let failedCount = 0;
+  const failures: string[] = [];
 
   for (const type of modelTypes) {
     const modelConfig = config.models[type];
     if (modelConfig) {
-      await downloadModel(type, modelConfig, modelsDir);
+      try {
+        await downloadModel(type, modelConfig, modelsDir);
+        downloadedCount++;
+      } catch (err) {
+        failedCount++;
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        failures.push(`${type}: ${errorMsg}`);
+        console.error(`    ❌ Failed: ${errorMsg}`);
+      }
+    }
+  }
+
+  // Report failures
+  if (failedCount > 0) {
+    console.error(`\n⚠️  ${failedCount} download(s) failed:`);
+    for (const failure of failures) {
+      console.error(`   - ${failure}`);
     }
   }
 
@@ -310,7 +346,7 @@ async function setupFromConfig(configPath: string): Promise<void> {
     }
   }
 
-  console.log('\n💡 To set up native binaries (whisper-cli, llama-completion, sherpa-onnx):');
+  console.log('\n💡 To set up native binaries (whisper-cli, llama-completion, llama-mtmd-cli, sherpa-onnx):');
   console.log('   npx mvas setup --binaries-only');
 }
 
@@ -330,7 +366,7 @@ async function setupBinaries(): Promise<void> {
   }
 
   console.log('Setting up native binaries...');
-  console.log('This will configure: whisper-cli, llama-completion, sherpa-onnx');
+  console.log('This will configure: whisper-cli, llama-completion, llama-mtmd-cli, sherpa-onnx');
   console.log('');
 
   const child = spawn('bash', [targetScript, '--binaries-only'], {
@@ -365,7 +401,7 @@ mvas - Modular Voice Agent SDK CLI
 
 Commands:
   setup <config.json>     Download models specified in config file
-  setup --binaries-only   Set up native binaries (whisper-cli, llama-completion, sherpa-onnx)
+  setup --binaries-only   Set up native binaries (whisper-cli, llama-completion, llama-mtmd-cli, sherpa-onnx)
   help                    Show this help message
 
 Config file format (JSON):
@@ -388,6 +424,8 @@ Config file format (JSON):
       }
     }
   }
+
+  Note: Model keys can be anything (stt, llm, tts, audioLLM, projector, etc.)
 
 Options for each model:
   url         - Download URL (required)

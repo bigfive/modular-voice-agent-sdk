@@ -41,9 +41,10 @@ const CONFIG = {
   llm: {
     baseUrl: 'https://api.openai.com/v1',
     apiKey: OPENAI_API_KEY,
-    model: 'gpt-5-nano',
-    maxTokens: 256,
-    temperature: 0.7,
+    model: 'gpt-5-mini',
+    modelParams: {
+      max_completion_tokens: 256,
+    },
   },
   tts: {
     binaryPath: getBinaryPath('sherpa-onnx-offline-tts'),

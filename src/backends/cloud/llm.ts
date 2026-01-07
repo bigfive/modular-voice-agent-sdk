@@ -46,11 +46,7 @@ export class CloudLLM implements LLMPipeline {
   private tracker: LLMConversationTracker;
 
   constructor(config: CloudLLMConfig) {
-    this.config = {
-      maxTokens: 256,
-      temperature: 0.7,
-      ...config,
-    };
+    this.config = config;
     this.tracker = new LLMConversationTracker(new LLMLogger());
   }
 
@@ -105,9 +101,8 @@ export class CloudLLM implements LLMPipeline {
     const body: Record<string, unknown> = {
       model: this.config.model,
       messages: openaiMessages,
-      max_tokens: this.config.maxTokens,
-      temperature: this.config.temperature,
       stream: true,
+      ...this.config.modelParams,
     };
 
     // Add tools if provided
@@ -139,8 +134,7 @@ export class CloudLLM implements LLMPipeline {
     let fullContent = '';
     let buffer = '';
     const toolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map();
-    let finishReason: 'stop' | 'tool_calls' = 'stop';
-
+    let finishReason: string | null = null;
     while (true) {
       const { done, value } = await reader.read();
 
@@ -166,6 +160,12 @@ export class CloudLLM implements LLMPipeline {
 
           try {
             const parsed = JSON.parse(jsonStr);
+
+            // Check for API error in stream
+            if (parsed.error) {
+              throw new Error(`Cloud LLM stream error: ${JSON.stringify(parsed.error)}`);
+            }
+
             const choice = parsed.choices?.[0];
             const delta = choice?.delta;
 
@@ -198,12 +198,17 @@ export class CloudLLM implements LLMPipeline {
               }
             }
 
-            // Check finish reason
-            if (choice?.finish_reason === 'tool_calls') {
-              finishReason = 'tool_calls';
+            // Track finish reason from API
+            if (choice?.finish_reason) {
+              finishReason = choice.finish_reason;
             }
-          } catch {
-            // Skip malformed JSON lines (can happen with some providers)
+          } catch (e) {
+            // Re-throw actual errors, only skip JSON parse errors
+            if (e instanceof SyntaxError) {
+              console.warn('CloudLLM: Skipping malformed JSON line:', jsonStr.substring(0, 100));
+            } else {
+              throw e;
+            }
           }
         }
       }
@@ -230,6 +235,17 @@ export class CloudLLM implements LLMPipeline {
       }
     }
 
+    // Check for empty response (no content and no tool calls)
+    if (!fullContent && resultToolCalls.length === 0) {
+      const reason = finishReason || 'unknown';
+      throw new Error(
+        `Cloud LLM returned empty response (finish_reason: ${reason}). ` +
+        (reason === 'length'
+          ? 'The model hit the token limit before producing output. Try increasing max_completion_tokens.'
+          : 'The model did not produce any content.')
+      );
+    }
+
     // Log the response
     this.tracker.logOutput(
       conversationId,
@@ -237,10 +253,14 @@ export class CloudLLM implements LLMPipeline {
       resultToolCalls.length > 0 ? resultToolCalls : undefined
     );
 
+    // Normalize finish reason for our interface
+    const normalizedFinishReason: 'stop' | 'tool_calls' =
+      resultToolCalls.length > 0 ? 'tool_calls' : 'stop';
+
     return {
       content: fullContent,
       toolCalls: resultToolCalls.length > 0 ? resultToolCalls : undefined,
-      finishReason: resultToolCalls.length > 0 ? 'tool_calls' : finishReason,
+      finishReason: normalizedFinishReason,
     };
   }
 

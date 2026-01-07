@@ -41,6 +41,10 @@ export interface BrowserSupport {
   webSocket: boolean;
   /** AudioContext for audio processing */
   audioContext: boolean;
+  /** Whether the browser is Brave (blocks WebSpeech STT for privacy) */
+  isBrave: boolean;
+  /** Whether WebSpeech STT is actually usable (exists AND not blocked by Brave) */
+  webSpeechSTTUsable: boolean;
 }
 
 export type VoiceClientStatus =
@@ -159,11 +163,16 @@ export class VoiceClient {
   static getBrowserSupport(): BrowserSupport {
     const hasWindow = typeof window !== 'undefined';
 
+    const webSpeechSTT = hasWindow && !!(
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition
+    );
+
+    // Brave has WebSpeech API but blocks it for privacy (connects to Google)
+    const isBrave = hasWindow && (navigator as any).brave !== undefined;
+
     return {
-      webSpeechSTT: hasWindow && !!(
-        (window as any).SpeechRecognition ||
-        (window as any).webkitSpeechRecognition
-      ),
+      webSpeechSTT,
       webSpeechTTS: hasWindow && 'speechSynthesis' in window,
       webGPU: hasWindow && 'gpu' in navigator,
       mediaDevices: hasWindow && !!(navigator.mediaDevices?.getUserMedia),
@@ -172,6 +181,8 @@ export class VoiceClient {
         (window as any).AudioContext ||
         (window as any).webkitAudioContext
       ),
+      isBrave,
+      webSpeechSTTUsable: webSpeechSTT && !isBrave,
     };
   }
 
@@ -183,7 +194,9 @@ export class VoiceClient {
     const support = VoiceClient.getBrowserSupport();
     const issues: string[] = [];
 
-    if (!support.webSpeechSTT) {
+    if (support.isBrave) {
+      issues.push('Speech recognition (WebSpeech STT) - Brave blocks this for privacy. Use Chrome, Edge, Safari, or TransformersSTT');
+    } else if (!support.webSpeechSTT) {
       issues.push('Speech recognition (WebSpeech STT) - use Chrome, Edge, or Safari, or use TransformersSTT for local transcription');
     }
     if (!support.mediaDevices) {

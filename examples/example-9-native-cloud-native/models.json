@@ -3,7 +3,7 @@
     "stt": {
       "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin",
       "filename": "whisper-large-v3-turbo-q8.bin",
-      "size": 916324928
+      "size": 874188075
     },
     "tts": {
       "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-lessac-medium.tar.bz2",

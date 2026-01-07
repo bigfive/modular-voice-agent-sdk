@@ -28,20 +28,25 @@ import {
 
 const support = VoiceClient.getBrowserSupport();
 
-if (!support.webSpeechSTT) {
+if (!support.webSpeechSTTUsable) {
+  const isBraveMessage = support.isBrave
+    ? `<p>You're using <strong>Brave</strong>, which blocks WebSpeech STT for privacy reasons
+       (it requires connecting to Google's servers).</p>`
+    : `<p style="color: #666;">
+        This example uses the Web Speech API for voice recognition, which is only supported in
+        <strong>Chrome</strong>, <strong>Edge</strong>, and <strong>Safari</strong>.
+      </p>`;
+
   document.body.innerHTML = `
     <div style="max-width: 600px; margin: 50px auto; padding: 20px; font-family: system-ui; text-align: center;">
       <h1>⚠️ Browser Not Supported</h1>
       <p>WebSpeech STT is not available in this browser.</p>
-      <p style="color: #666;">
-        This example uses the Web Speech API for voice recognition, which is only supported in
-        <strong>Chrome</strong>, <strong>Edge</strong>, and <strong>Safari</strong>.
-      </p>
+      ${isBraveMessage}
       <div style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-radius: 8px;">
         <p><strong>Try one of these alternatives:</strong></p>
         <ul style="text-align: left; display: inline-block;">
-          <li><a href="../native-native-native/">native-native-native</a> - Server handles everything</li>
-          <li><a href="../transformers-transformers-speech/">transformers-transformers-speech</a> - Server STT/LLM, local TTS</li>
+          <li><a href="../example-4-native-native-native/">native-native-native</a> - Server handles everything (works in all browsers)</li>
+          <li><a href="../example-6-transformers-transformers-speech/">transformers-transformers-speech</a> - Server STT/LLM, local TTS</li>
         </ul>
       </div>
     </div>

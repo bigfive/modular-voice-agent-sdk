@@ -26,6 +26,14 @@ const SpeechRecognition =
     ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     : null;
 
+/**
+ * Detect if browser is Brave (blocks WebSpeech for privacy)
+ */
+function isBraveBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return (navigator as any).brave !== undefined;
+}
+
 export class WebSpeechSTT {
   private config: Required<WebSpeechSTTConfig>;
   private recognition: any = null;
@@ -43,10 +51,27 @@ export class WebSpeechSTT {
   }
 
   /**
-   * Check if Web Speech API is available
+   * Check if Web Speech API is available.
+   * Note: This only checks if the API exists, not if it will work.
+   * Brave has the API but blocks it for privacy. Use isBraveBlocked() to check.
    */
   static isSupported(): boolean {
     return SpeechRecognition !== null;
+  }
+
+  /**
+   * Check if the browser is Brave, which has the WebSpeech API but blocks it
+   * for privacy reasons (it connects to Google servers).
+   */
+  static isBraveBlocked(): boolean {
+    return isBraveBrowser();
+  }
+
+  /**
+   * Check if WebSpeech STT is actually usable (API exists and not blocked)
+   */
+  static isUsable(): boolean {
+    return WebSpeechSTT.isSupported() && !WebSpeechSTT.isBraveBlocked();
   }
 
   /**
@@ -86,6 +111,16 @@ export class WebSpeechSTT {
       return;
     }
 
+    // Warn about Brave browser blocking
+    if (isBraveBrowser()) {
+      this.onErrorCallback?.(new Error(
+        'WebSpeech STT is blocked in Brave browser for privacy reasons. ' +
+        'Brave blocks connections to Google\'s speech recognition servers. ' +
+        'Try using Chrome, Edge, or Safari, or use a different STT backend like TransformersSTT.'
+      ));
+      return;
+    }
+
     if (this.isListening) return;
 
     this.recognition = new SpeechRecognition();
@@ -112,14 +147,32 @@ export class WebSpeechSTT {
 
     this.recognition.onerror = (event: any) => {
       this.isListening = false;
-      // 'no-speech' and 'aborted' are not really errors
+      // Map common error types to helpful messages
+      const errorMessages: Record<string, string> = {
+        'not-allowed': 'Microphone permission denied. Please allow microphone access.',
+        'network': 'Network error - speech recognition service unavailable. This may be blocked by your browser or ad blocker.',
+        'service-not-allowed': 'Speech recognition service not allowed. This browser may block speech recognition for privacy.',
+        'audio-capture': 'No microphone found. Please connect a microphone and try again.',
+        'language-not-supported': `Language "${this.config.language}" is not supported for speech recognition.`,
+      };
+
+      // 'no-speech' and 'aborted' are not really errors worth reporting
       if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        this.onErrorCallback?.(new Error(`Speech recognition error: ${event.error}`));
+        const message = errorMessages[event.error] || `Speech recognition error: ${event.error}`;
+        this.onErrorCallback?.(new Error(message));
       }
     };
 
     this.isListening = true;
-    this.recognition.start();
+
+    try {
+      this.recognition.start();
+    } catch (err) {
+      this.isListening = false;
+      this.onErrorCallback?.(new Error(
+        `Failed to start speech recognition: ${err instanceof Error ? err.message : String(err)}`
+      ));
+    }
   }
 
   /**

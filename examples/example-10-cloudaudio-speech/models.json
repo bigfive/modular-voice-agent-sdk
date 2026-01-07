@@ -1,0 +1,15 @@
+{
+  "models": {
+    "llm": {
+      "url": "https://huggingface.co/ggml-org/ultravox-v0_5-llama-3_1-8b-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+      "filename": "ultravox-llama-3.1-8b-q4_k_m.gguf",
+      "size": 4920739232
+    },
+    "projector": {
+      "url": "https://huggingface.co/ggml-org/ultravox-v0_5-llama-3_1-8b-GGUF/resolve/main/mmproj-ultravox-v0_5-llama-3_1-8b-f16.gguf",
+      "filename": "ultravox-mmproj-f16.gguf",
+      "size": 1379512224
+    }
+  }
+}
+

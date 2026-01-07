@@ -110,6 +110,29 @@ else
   fi
 fi
 
+# --- llama.cpp (llama-mtmd-cli for multimodal audio) ---
+echo ""
+echo "==> Setting up llama-mtmd-cli (for audio LLMs)..."
+if [ -L "llama-mtmd-cli" ] || [ -f "llama-mtmd-cli" ]; then
+  echo "    Already exists, skipping."
+else
+  # Try to find llama-mtmd-cli from PATH or common locations
+  if command -v llama-mtmd-cli &> /dev/null; then
+    MTMD_PATH="$(command -v llama-mtmd-cli)"
+    ln -s "$MTMD_PATH" llama-mtmd-cli
+    echo "    Linked to $MTMD_PATH"
+  elif [ -f "/opt/homebrew/bin/llama-mtmd-cli" ]; then
+    ln -s /opt/homebrew/bin/llama-mtmd-cli llama-mtmd-cli
+    echo "    Linked to /opt/homebrew/bin/llama-mtmd-cli"
+  elif [ -f "/usr/local/bin/llama-mtmd-cli" ]; then
+    ln -s /usr/local/bin/llama-mtmd-cli llama-mtmd-cli
+    echo "    Linked to /usr/local/bin/llama-mtmd-cli"
+  else
+    echo "    ⚠️  llama-mtmd-cli not found (optional - for audio LLMs)."
+    echo "       Install with: brew install llama.cpp"
+  fi
+fi
+
 # --- sherpa-onnx (TTS) ---
 echo ""
 echo "==> Setting up sherpa-onnx for $OS/$ARCH..."

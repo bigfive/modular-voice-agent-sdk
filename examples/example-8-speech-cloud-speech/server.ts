@@ -35,9 +35,10 @@ const CONFIG = {
   llm: {
     baseUrl: 'https://api.openai.com/v1',
     apiKey: OPENAI_API_KEY,
-    model: 'gpt-5-nano',
-    maxTokens: 256,
-    temperature: 0.7,
+    model: 'gpt-5-mini',
+    modelParams: {
+      max_completion_tokens: 256,
+    },
   },
   systemPrompt: `You are a helpful voice assistant. Keep responses brief—1-2 sentences. Speak naturally.`,
 };
