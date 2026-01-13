@@ -22,7 +22,7 @@ import type {
   ToolMessage,
   TurnContext,
 } from './types';
-import { TextNormalizer } from './services/text-normalizer';
+import { TextNormalizer, getDefaultLogger } from './services';
 
 /** Maximum number of tool call iterations to prevent infinite loops */
 const MAX_TOOL_ITERATIONS = 10;
@@ -556,6 +556,8 @@ export class VoicePipeline {
     if (tts) {
       const normalizedText = this.textNormalizer.normalize(content);
       if (normalizedText) {
+        getDefaultLogger().log({ type: 'tts_start' });
+        getDefaultLogger().log({ type: 'tts', content: normalizedText });
         const playable = await tts.synthesize(normalizedText);
         callbacks.onAudio(playable);
       }
@@ -614,6 +616,7 @@ export class VoicePipeline {
     let nextSentenceIndex = 0;
     let nextToSend = 0;
     const ttsPromises: Promise<void>[] = [];
+    let ttsStartLogged = false;
 
     const flushPlayableQueue = () => {
       while (playableQueue.has(nextToSend)) {
@@ -626,6 +629,13 @@ export class VoicePipeline {
 
     const queueTTS = (sentence: string, index: number) => {
       const normalizedText = this.textNormalizer.normalize(sentence);
+      if (normalizedText) {
+        if (!ttsStartLogged) {
+          getDefaultLogger().log({ type: 'tts_start' });
+          ttsStartLogged = true;
+        }
+        getDefaultLogger().log({ type: 'tts', content: normalizedText });
+      }
       const promise = tts
         .synthesize(normalizedText)
         .then((playable) => {

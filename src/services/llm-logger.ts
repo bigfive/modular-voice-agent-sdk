@@ -20,7 +20,9 @@ export type LLMLogEvent =
   | { type: 'tool_result'; content: string }
   | { type: 'assistant'; content: string }
   | { type: 'response'; content: string }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'tts'; content: string }
+  | { type: 'tts_start' };
 
 // ============================================================================
 // Message Interface (matches the library's Message type)
@@ -134,6 +136,14 @@ export class LLMLogger {
 
       case 'error':
         console.log(`${C.dim}│${C.reset} ${ICONS.error} ${C.red}ERROR${C.reset}: ${event.message}`);
+        break;
+
+      case 'tts_start':
+        console.log(`${C.dim}├─────────────────── ${C.reset}${C.green}tts${C.reset} ${C.dim}───────────────────${C.reset}`);
+        break;
+
+      case 'tts':
+        console.log(`${C.dim}│${C.reset} ${ICONS.arrow} ${ICONS.response} ${event.content}`);
         break;
     }
   }
