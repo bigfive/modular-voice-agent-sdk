@@ -108,6 +108,68 @@ export class PipelineSession {
   }
 
   /**
+   * Get the current conversation history.
+   * Useful for persisting state or resuming sessions.
+   */
+  getHistory(): readonly Message[] {
+    return this.history;
+  }
+
+  /**
+   * Set the conversation history.
+   * Use this to restore a previous session's state.
+   * Note: Should include the system prompt as the first message if needed.
+   *
+   * This method also repairs incomplete tool call sequences - if an assistant
+   * message has tool_use but no following tool_result (e.g., session was
+   * interrupted), placeholder results are added to satisfy the API requirement.
+   */
+  setHistory(messages: Message[]): void {
+    this.history = this.repairHistory([...messages]);
+  }
+
+  /**
+   * Repair history by ensuring every tool_use has a corresponding tool_result.
+   * The Claude API requires tool_result blocks immediately after tool_use blocks.
+   */
+  private repairHistory(messages: Message[]): Message[] {
+    const repaired: Message[] = [];
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      repaired.push(msg);
+
+      // Check if this is an assistant message with tool calls
+      if (msg.role === 'assistant' && 'toolCalls' in msg && msg.toolCalls && msg.toolCalls.length > 0) {
+        const toolCalls = msg.toolCalls;
+
+        // Collect all tool_result messages that immediately follow
+        const toolResultIds = new Set<string>();
+        let j = i + 1;
+        while (j < messages.length && messages[j].role === 'tool') {
+          const toolMsg = messages[j] as { role: 'tool'; toolCallId: string; content: string };
+          toolResultIds.add(toolMsg.toolCallId);
+          j++;
+        }
+
+        // Add placeholder results for any missing tool calls
+        for (const tc of toolCalls) {
+          if (!toolResultIds.has(tc.id)) {
+            console.warn(`Repairing history: Adding placeholder tool_result for ${tc.name} (${tc.id})`);
+            repaired.push({
+              role: 'tool',
+              toolCallId: tc.id,
+              content: JSON.stringify({ error: 'Session was interrupted before tool completed' }),
+            } as Message);
+          }
+        }
+      }
+    }
+
+    return repaired;
+  }
+
+  /**
    * Process accumulated audio through the pipeline (STT → LLM → TTS)
    */
   private async *processAudio(): AsyncGenerator<ServerMessage> {
