@@ -2,7 +2,7 @@
  * Native TTS Pipeline (sherpa-onnx)
  * Server-only - requires sherpa-onnx binary
  *
- * Uses sherpa-onnx-offline-tts which supports Piper ONNX models.
+ * Uses sherpa-onnx-offline-tts which supports multiple model types via providers.
  * See: https://github.com/k2-fsa/sherpa-onnx
  */
 
@@ -12,24 +12,24 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import type { TTSPipeline, SherpaOnnxTTSConfig, ProgressCallback, AudioResult, AudioPlayable } from '../../types';
 import { BufferedAudioPlayable } from '../../types';
+import { TTSModelProvider, PiperTTSProvider } from './tts-providers';
 
 export class NativeTTS implements TTSPipeline {
   private config: SherpaOnnxTTSConfig;
+  private provider: TTSModelProvider;
   private ready = false;
-  private modelPath: string = '';
-  private tokensPath: string = '';
-  private dataDir: string = '';
 
-  constructor(config: SherpaOnnxTTSConfig) {
+  constructor(config: SherpaOnnxTTSConfig, provider?: TTSModelProvider) {
     this.config = {
       speakerId: 0,
       speedScale: 1.0,
       ...config,
     };
+    this.provider = provider || new PiperTTSProvider();
   }
 
   async initialize(_onProgress?: ProgressCallback): Promise<void> {
-    console.log('Initializing native TTS (sherpa-onnx)...');
+    console.log(`Initializing native TTS (${this.provider.name})...`);
 
     if (!existsSync(this.config.binaryPath)) {
       throw new Error(`sherpa-onnx-offline-tts binary not found at: ${this.config.binaryPath}`);
@@ -38,33 +38,11 @@ export class NativeTTS implements TTSPipeline {
       throw new Error(`TTS model directory not found at: ${this.config.modelDir}`);
     }
 
-    // Find the model files in the directory
-    const modelDir = this.config.modelDir;
-
-    // Look for .onnx file
-    const onnxFiles = ['en_US-lessac-medium.onnx', 'model.onnx']
-      .map(f => join(modelDir, f))
-      .filter(f => existsSync(f));
-
-    if (onnxFiles.length === 0) {
-      throw new Error(`No .onnx model file found in: ${modelDir}`);
-    }
-    this.modelPath = onnxFiles[0];
-
-    // Look for tokens.txt
-    this.tokensPath = join(modelDir, 'tokens.txt');
-    if (!existsSync(this.tokensPath)) {
-      throw new Error(`tokens.txt not found in: ${modelDir}`);
-    }
-
-    // Look for espeak-ng-data directory
-    this.dataDir = join(modelDir, 'espeak-ng-data');
-    if (!existsSync(this.dataDir)) {
-      throw new Error(`espeak-ng-data directory not found in: ${modelDir}`);
-    }
+    // Validate model directory using provider
+    this.provider.validate(this.config.modelDir);
 
     this.ready = true;
-    console.log('Native TTS (sherpa-onnx) ready.');
+    console.log(`Native TTS (${this.provider.name}) ready.`);
   }
 
   async synthesize(text: string): Promise<AudioPlayable> {
@@ -78,16 +56,18 @@ export class NativeTTS implements TTSPipeline {
     try {
       const escapedText = text.replace(/'/g, "'\\''");
 
-      execSync(
-        `"${this.config.binaryPath}" ` +
-        `--vits-model="${this.modelPath}" ` +
-        `--vits-tokens="${this.tokensPath}" ` +
-        `--vits-data-dir="${this.dataDir}" ` +
-        `--sid=${this.config.speakerId} ` +
-        `--output-filename="${tmpFile}" ` +
-        `'${escapedText}'`,
-        { stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 50 * 1024 * 1024 }
-      );
+      // Build command using provider
+      const baseCmd = this.provider.buildCommand({
+        binaryPath: this.config.binaryPath,
+        modelDir: this.config.modelDir,
+        speakerId: this.config.speakerId ?? 0,
+        outputFile: tmpFile,
+        numThreads: this.config.numThreads,
+      });
+
+      const cmd = `${baseCmd} '${escapedText}'`;
+
+      execSync(cmd, { stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 50 * 1024 * 1024 });
 
       // Read the WAV file and extract PCM data
       const wavBuffer = readFileSync(tmpFile);
@@ -128,5 +108,3 @@ export class NativeTTS implements TTSPipeline {
     return this.ready;
   }
 }
-
-

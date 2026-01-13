@@ -289,6 +289,12 @@ export interface SherpaOnnxTTSConfig {
   modelDir: string;  // Directory containing .onnx, tokens.txt, espeak-ng-data/
   speakerId?: number;
   speedScale?: number;
+  numThreads?: number;  // CPU threads for inference (default: 4)
+}
+
+export interface SystemPromptBlock {
+  text: string;
+  cacheControl?: boolean;
 }
 
 export interface CloudLLMConfig {
@@ -296,5 +302,6 @@ export interface CloudLLMConfig {
   apiKey?: string;           // API key (optional for local servers like Ollama)
   model: string;             // Model name (e.g., "gpt-5-mini", "llama3.2")
   modelParams?: Record<string, unknown>;  // Model-specific params passed to API (e.g., max_tokens, temperature)
+  structuredSystemPrompt?: SystemPromptBlock[];  // Structured system prompt with optional cache control (for providers that support it)
 }
 
