@@ -1,9 +1,9 @@
 /**
- * Cloud LLM Pipeline (OpenAI-compatible API)
- * Works with: OpenAI, Ollama, vLLM, LMStudio, and any OpenAI-compatible endpoint
+ * Cloud LLM Pipeline (Multi-provider support)
+ * Works with: OpenAI, Anthropic, Ollama, vLLM, LMStudio, and any compatible endpoint
  *
  * Uses native fetch with streaming - no external dependencies required.
- * Supports native tool calling via the OpenAI function calling API.
+ * Supports native tool calling via provider-specific APIs.
  */
 
 import type {
@@ -13,40 +13,21 @@ import type {
   Message,
   LLMGenerateOptions,
   LLMGenerateResult,
-  ToolDefinition,
   ToolCall,
-  ToolMessage,
-  AssistantMessage,
 } from '../../types';
 import { LLMLogger, LLMConversationTracker, type TrackerMessage } from '../../services';
-
-interface OpenAIMessage {
-  role: string;
-  content: string | null;
-  tool_calls?: Array<{
-    id: string;
-    type: 'function';
-    function: { name: string; arguments: string };
-  }>;
-  tool_call_id?: string;
-}
-
-interface OpenAITool {
-  type: 'function';
-  function: {
-    name: string;
-    description: string;
-    parameters: ToolDefinition['parameters'];
-  };
-}
+import type { LLMProvider } from './providers';
+import { OpenAICompletionsProvider } from './openai-provider';
 
 export class CloudLLM implements LLMPipeline {
   private config: CloudLLMConfig;
+  private provider: LLMProvider;
   private ready = false;
   private tracker: LLMConversationTracker;
 
-  constructor(config: CloudLLMConfig) {
+  constructor(config: CloudLLMConfig, provider?: LLMProvider) {
     this.config = config;
+    this.provider = provider || new OpenAICompletionsProvider();
     this.tracker = new LLMConversationTracker(new LLMLogger());
   }
 
@@ -59,7 +40,7 @@ export class CloudLLM implements LLMPipeline {
       const modelsUrl = `${this.config.baseUrl}/models`;
       const response = await fetch(modelsUrl, {
         method: 'GET',
-        headers: this.getHeaders(),
+        headers: this.provider.getHeaders(this.config.apiKey),
       });
 
       if (!response.ok) {
@@ -89,30 +70,27 @@ export class CloudLLM implements LLMPipeline {
     // Log the input messages
     this.tracker.logInput(messages as TrackerMessage[]);
 
-    const url = `${this.config.baseUrl}/chat/completions`;
+    // Get endpoint from provider
+    const url = this.provider.getEndpoint(this.config.baseUrl);
 
-    // Convert messages to OpenAI format
-    const openaiMessages = this.convertMessages(messages);
+    // Extract system prompt from messages
+    const systemPrompt = this.extractSystemPrompt(messages);
+    const conversationMessages = messages.filter(m => m.role !== 'system');
 
-    // Build request body
-    const body: Record<string, unknown> = {
-      model: this.config.model,
-      messages: openaiMessages,
-      stream: true,
-      ...this.config.modelParams,
-    };
-
-    // Add tools if provided
-    if (options?.tools && options.tools.length > 0) {
-      body.tools = this.convertTools(options.tools);
-    }
+    // Format request using provider
+    const body = this.provider.formatRequest(
+      conversationMessages,
+      systemPrompt,
+      {
+        model: this.config.model,
+        tools: options?.tools,
+        modelParams: this.config.modelParams,
+      }
+    );
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        ...this.getHeaders(),
-        'Content-Type': 'application/json',
-      },
+      headers: this.provider.getHeaders(this.config.apiKey),
       body: JSON.stringify(body),
     });
 
@@ -125,13 +103,14 @@ export class CloudLLM implements LLMPipeline {
       throw new Error('No response body received');
     }
 
-    // Parse SSE stream
+    // Parse SSE stream using provider
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let fullContent = '';
     let buffer = '';
     const toolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map();
     let finishReason: string | null = null;
+
     while (true) {
       const { done, value } = await reader.read();
 
@@ -156,25 +135,21 @@ export class CloudLLM implements LLMPipeline {
           const jsonStr = trimmed.slice(6);
 
           try {
-            const parsed = JSON.parse(jsonStr);
+            const parsed = this.provider.parseStreamChunk(jsonStr);
 
-            // Check for API error in stream
-            if (parsed.error) {
-              throw new Error(`Cloud LLM stream error: ${JSON.stringify(parsed.error)}`);
+            if (!parsed) {
+              continue; // Skip null results (malformed JSON, etc.)
             }
 
-            const choice = parsed.choices?.[0];
-            const delta = choice?.delta;
-
             // Handle text content
-            if (delta?.content) {
-              fullContent += delta.content;
-              options?.onToken?.(delta.content);
+            if (parsed.content) {
+              fullContent += parsed.content;
+              options?.onToken?.(parsed.content);
             }
 
             // Handle tool calls (streamed incrementally)
-            if (delta?.tool_calls) {
-              for (const tc of delta.tool_calls) {
+            if (parsed.toolCalls) {
+              for (const tc of parsed.toolCalls) {
                 const index = tc.index ?? 0;
 
                 if (!toolCalls.has(index)) {
@@ -186,26 +161,22 @@ export class CloudLLM implements LLMPipeline {
                 if (tc.id) {
                   existing.id = tc.id;
                 }
-                if (tc.function?.name) {
-                  existing.name = tc.function.name;
+                if (tc.name) {
+                  existing.name = tc.name;
                 }
-                if (tc.function?.arguments) {
-                  existing.arguments += tc.function.arguments;
+                if (tc.arguments) {
+                  existing.arguments += tc.arguments;
                 }
               }
             }
 
             // Track finish reason from API
-            if (choice?.finish_reason) {
-              finishReason = choice.finish_reason;
+            if (parsed.finishReason) {
+              finishReason = parsed.finishReason;
             }
           } catch (e) {
-            // Re-throw actual errors, only skip JSON parse errors
-            if (e instanceof SyntaxError) {
-              console.warn('CloudLLM: Skipping malformed JSON line:', jsonStr.substring(0, 100));
-            } else {
-              throw e;
-            }
+            // Errors during parsing are already handled by provider
+            throw e;
           }
         }
       }
@@ -260,68 +231,18 @@ export class CloudLLM implements LLMPipeline {
     };
   }
 
-  private convertMessages(messages: Message[]): OpenAIMessage[] {
-    return messages.map((m) => {
-      // Handle tool messages
-      if (m.role === 'tool') {
-        const toolMsg = m as ToolMessage;
-        return {
-          role: 'tool',
-          content: toolMsg.content,
-          tool_call_id: toolMsg.toolCallId,
-        };
-      }
-
-      // Handle assistant messages with tool calls
-      if (m.role === 'assistant') {
-        const assistantMsg = m as AssistantMessage;
-        if (assistantMsg.toolCalls && assistantMsg.toolCalls.length > 0) {
-          return {
-            role: 'assistant',
-            content: assistantMsg.content || null,
-            tool_calls: assistantMsg.toolCalls.map((tc) => ({
-              id: tc.id,
-              type: 'function' as const,
-              function: {
-                name: tc.name,
-                arguments: JSON.stringify(tc.arguments),
-              },
-            })),
-          };
-        }
-      }
-
-      // Regular messages
-      return {
-        role: m.role,
-        content: m.content,
-      };
-    });
-  }
-
-  private convertTools(tools: ToolDefinition[]): OpenAITool[] {
-    return tools.map((tool) => ({
-      type: 'function',
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      },
-    }));
-  }
-
-  private getHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {};
-
-    if (this.config.apiKey) {
-      headers['Authorization'] = `Bearer ${this.config.apiKey}`;
+  private extractSystemPrompt(messages: Message[]): string | undefined {
+    // Use structuredSystemPrompt if provided in config
+    if (this.config.structuredSystemPrompt) {
+      return this.config.structuredSystemPrompt as any; // Will be passed to provider as-is
     }
 
-    return headers;
+    // Otherwise, extract from messages
+    const systemMsg = messages.find(m => m.role === 'system');
+    return systemMsg?.content;
   }
 
   isReady(): boolean {
     return this.ready;
   }
 }
-
