@@ -137,11 +137,11 @@ export class TextNormalizer {
       .replace(/@/g, ' at ')
       .replace(/\+(\d)/g, 'plus $1')
       .replace(/\+/g, ' plus ')
-      .replace(/-(\d)/g, 'minus $1')
+      .replace(/-(\d)/g, ' minus $1')
       .replace(/=/g, ' equals ')
       .replace(/\//g, ' to ')
-      .replace(/#(\d+)/g, 'number $1')
-      .replace(/#(\w+)/g, 'hashtag $1')
+      .replace(/#(\d+)/g, ' number $1')
+      .replace(/#(\w+)/g, ' hashtag $1')
       .replace(/#/g, ' number ');
   }
 
