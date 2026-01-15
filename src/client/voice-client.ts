@@ -22,8 +22,10 @@ import { WebSpeechTTS } from './web-speech-tts';
 import {
   float32ToBase64,
   base64ToFloat32,
+  generateId,
   type ClientMessage,
-  type ServerMessage,
+  type ClientEnvelope,
+  type ServerEnvelope,
 } from './protocol';
 
 // ============ Types ============
@@ -306,6 +308,10 @@ export class VoiceClient {
   private audioChunks: Blob[] = [];
   private mediaRecording = false;
 
+  // Session/request tracking for envelope protocol
+  private sessionId: string | null = null;
+  private currentRequestId: string | null = null;
+
 
   constructor(config: VoiceClientConfig) {
     // Get components from factory, passing modelStore for caching
@@ -508,16 +514,13 @@ export class VoiceClient {
     this.ws = new WebSocket(this.config.serverUrl);
 
     this.ws.onopen = () => {
-      // Send capabilities
-      this.send({
-        type: 'capabilities',
-        hasSTT: this.localSTT !== null,
-        hasTTS: this.localTTS !== null,
-      });
-      this.setStatus('ready');
+      // Wait for session_init before sending capabilities
+      // The server will send session_init immediately on connect
     };
 
     this.ws.onclose = () => {
+      this.sessionId = null;
+      this.currentRequestId = null;
       this.setStatus('disconnected');
       if (this.config.autoReconnect && this.needsServer) {
         this.scheduleReconnect();
@@ -530,8 +533,8 @@ export class VoiceClient {
 
     this.ws.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data) as ServerMessage;
-        this.handleServerMessage(msg);
+        const envelope = JSON.parse(event.data) as ServerEnvelope;
+        this.handleServerEnvelope(envelope);
       } catch {
         this.emit('error', new Error('Failed to parse server message'));
       }
@@ -563,6 +566,9 @@ export class VoiceClient {
    */
   async startRecording(): Promise<void> {
     if (this.status !== 'ready' && this.status !== 'speaking') return;
+
+    // Generate new requestId for this user turn
+    this.currentRequestId = generateId('req');
 
     // Stop any current playback
     this.player?.clear();
@@ -786,6 +792,8 @@ export class VoiceClient {
 
     // Tell server to clear too
     if (this.needsServer) {
+      // Generate a requestId for the clear_history message
+      this.currentRequestId = generateId('req');
       this.send({ type: 'clear_history' });
     }
   }
@@ -837,6 +845,22 @@ export class VoiceClient {
   }
 
   /**
+   * Get the current session ID (format: ses_<ulid>)
+   * Returns null if not connected to a server
+   */
+  getSessionId(): string | null {
+    return this.sessionId;
+  }
+
+  /**
+   * Get the current request ID (format: req_<ulid>)
+   * Returns null if no request is in progress
+   */
+  getCurrentRequestId(): string | null {
+    return this.currentRequestId;
+  }
+
+  /**
    * Subscribe to events
    */
   on<K extends EventName>(event: K, callback: VoiceClientEvents[K]): void {
@@ -869,13 +893,33 @@ export class VoiceClient {
   // ============ Private Methods ============
 
   private send(msg: ClientMessage): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(msg));
+    if (this.ws?.readyState === WebSocket.OPEN && this.sessionId && this.currentRequestId) {
+      const envelope: ClientEnvelope = {
+        sessionId: this.sessionId,
+        requestId: this.currentRequestId,
+        message: msg,
+      };
+      this.ws.send(JSON.stringify(envelope));
     }
   }
 
-  private handleServerMessage(msg: ServerMessage): void {
+  private handleServerEnvelope(envelope: ServerEnvelope): void {
+    const { message: msg } = envelope;
+
     switch (msg.type) {
+      case 'session_init':
+        // Store session ID and send capabilities
+        this.sessionId = msg.sessionId;
+        // Generate a requestId for the capabilities message
+        this.currentRequestId = generateId('req');
+        this.send({
+          type: 'capabilities',
+          hasSTT: this.localSTT !== null,
+          hasTTS: this.localTTS !== null,
+        });
+        this.setStatus('ready');
+        break;
+
       case 'transcript':
         // Server did STT - only relevant if we're not using local STT
         if (!this.localSTT) {

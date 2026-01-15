@@ -2,7 +2,47 @@
  * WebSocket Protocol Types for Voice Pipeline
  *
  * Shared types for client-server communication.
+ * All messages are wrapped in envelopes with session/request/response IDs.
  */
+
+import { ulid } from 'ulid';
+
+// ============ ID Types ============
+
+export type IdPrefix = 'ses' | 'req' | 'res';
+
+/**
+ * Generate a ULID-based identifier with a prefix.
+ * - ses_<ulid> - Session ID (server-generated on connect)
+ * - req_<ulid> - Request ID (client-generated per user turn)
+ * - res_<ulid> - Response ID (server-generated per message)
+ */
+export function generateId(prefix: IdPrefix): string {
+  return `${prefix}_${ulid()}`;
+}
+
+// ============ Envelope Types ============
+
+/**
+ * Client → Server envelope wrapper.
+ * All client messages are wrapped in this envelope.
+ */
+export type ClientEnvelope = {
+  sessionId: string;
+  requestId: string;
+  message: ClientMessage;
+};
+
+/**
+ * Server → Client envelope wrapper.
+ * All server messages are wrapped in this envelope.
+ */
+export type ServerEnvelope = {
+  sessionId: string;
+  requestId: string | null;  // null for session-level messages like session_init
+  responseId: string;
+  message: ServerMessage;
+};
 
 // ============ Client → Server ============
 
@@ -41,6 +81,15 @@ export type CapabilitiesMessage = {
 export type ClientMessage = AudioMessage | EndAudioMessage | ClearHistoryMessage | TextMessage | CapabilitiesMessage;
 
 // ============ Server → Client ============
+
+/**
+ * Session initialization message - sent by server on connect.
+ * Client should store the sessionId for use in all subsequent messages.
+ */
+export type SessionInitMessage = {
+  type: 'session_init';
+  sessionId: string;
+};
 
 export type TranscriptMessage = {
   type: 'transcript';
@@ -87,6 +136,7 @@ export type ErrorMessage = {
 };
 
 export type ServerMessage =
+  | SessionInitMessage
   | TranscriptMessage
   | ResponseChunkMessage
   | AudioResponseMessage

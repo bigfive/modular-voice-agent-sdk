@@ -8,6 +8,7 @@
 
 import type { VoicePipeline, ConversationContext, SessionBackends } from '../voice-pipeline';
 import type { ClientMessage, ServerMessage } from '../client/protocol';
+import { generateId } from '../client/protocol';
 import type { Message } from '../types';
 import { float32ToBase64Node, base64ToFloat32Node, concatFloat32Arrays } from './encoding';
 
@@ -38,11 +39,19 @@ export class PipelineSession {
   /** Session's conversation history */
   private history: Message[] = [];
 
+  /** Unique session identifier (ULID-based) */
+  private readonly _sessionId: string;
+
+  /** Current request being processed */
+  private _currentRequestId: string | null = null;
+
   /** Private constructor - use PipelineSession.create() */
   private constructor(
     private pipeline: VoicePipeline,
     private backends: SessionBackends
   ) {
+    // Generate unique session ID
+    this._sessionId = generateId('ses');
     // Initialize history with system prompt
     this.history = [{ role: 'system', content: this.pipeline.getSystemPrompt() }];
   }
@@ -105,6 +114,27 @@ export class PipelineSession {
    */
   getCapabilities(): ClientCapabilities {
     return { ...this.capabilities };
+  }
+
+  /**
+   * Get the session ID (ULID-based, format: ses_<ulid>)
+   */
+  getSessionId(): string {
+    return this._sessionId;
+  }
+
+  /**
+   * Get the current request ID being processed
+   */
+  getCurrentRequestId(): string | null {
+    return this._currentRequestId;
+  }
+
+  /**
+   * Set the current request ID (called by transport layer when processing a request)
+   */
+  setCurrentRequestId(requestId: string | null): void {
+    this._currentRequestId = requestId;
   }
 
   /**

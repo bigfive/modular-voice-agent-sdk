@@ -53,8 +53,13 @@ export type { AudioPlayerConfig } from './audio-player';
 export {
   float32ToBase64,
   base64ToFloat32,
+  generateId,
+  type IdPrefix,
+  type ClientEnvelope,
+  type ServerEnvelope,
   type ClientMessage,
   type ServerMessage,
+  type SessionInitMessage,
   type AudioMessage,
   type EndAudioMessage,
   type ClearHistoryMessage,

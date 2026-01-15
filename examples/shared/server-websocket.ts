@@ -3,10 +3,14 @@
  *
  * Provides a simple wrapper to reduce boilerplate while keeping
  * the session handling visible in each example.
+ *
+ * All messages use the envelope protocol with session/request/response IDs.
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
 import type { PipelineHandler, PipelineSession } from 'modular-voice-agent-sdk/server';
+import type { ClientEnvelope, ServerEnvelope, ServerMessage } from 'modular-voice-agent-sdk/client';
+import { generateId } from 'modular-voice-agent-sdk/client';
 
 // ============ Types ============
 
@@ -23,6 +27,26 @@ export interface WebSocketServerConfig {
   onError?: (ws: WebSocket, error: Error) => void;
 }
 
+// ============ Helper Functions ============
+
+/**
+ * Send a server message wrapped in an envelope
+ */
+function sendEnvelope(
+  ws: WebSocket,
+  sessionId: string,
+  requestId: string | null,
+  message: ServerMessage
+): void {
+  const envelope: ServerEnvelope = {
+    sessionId,
+    requestId,
+    responseId: generateId('res'),
+    message,
+  };
+  ws.send(JSON.stringify(envelope));
+}
+
 // ============ Server Setup ============
 
 /**
@@ -30,7 +54,10 @@ export interface WebSocketServerConfig {
  *
  * This is a thin wrapper that:
  * - Creates a WebSocketServer
- * - Creates sessions for each connection
+ * - Creates sessions for each connection (with unique session IDs)
+ * - Sends session_init on connect
+ * - Unwraps incoming ClientEnvelope messages
+ * - Wraps outgoing messages in ServerEnvelope
  * - Routes messages through session.handle()
  * - Cleans up sessions on disconnect
  */
@@ -42,13 +69,26 @@ export function startWebSocketServer(config: WebSocketServerConfig): WebSocketSe
   wss.on('connection', async (ws) => {
     console.log('Client connected');
     const session = await handler.createSession();
+    const sessionId = session.getSessionId();
+
+    console.log(`Session created: ${sessionId}`);
 
     // Notify callback
     onConnect?.(ws, session);
 
+    // Send session_init message to client
+    sendEnvelope(ws, sessionId, null, {
+      type: 'session_init',
+      sessionId,
+    });
+
     ws.on('message', async (data) => {
       try {
-        const message = JSON.parse(data.toString());
+        const envelope = JSON.parse(data.toString()) as ClientEnvelope;
+        const { requestId, message } = envelope;
+
+        // Track current request for this session
+        session.setCurrentRequestId(requestId);
 
         // Log capabilities when received (useful for debugging)
         if (message.type === 'capabilities') {
@@ -58,7 +98,7 @@ export function startWebSocketServer(config: WebSocketServerConfig): WebSocketSe
 
         // Route message through session handler
         for await (const response of session.handle(message)) {
-          ws.send(JSON.stringify(response));
+          sendEnvelope(ws, sessionId, requestId, response);
         }
       } catch (err) {
         console.error('Message error:', err);
@@ -67,7 +107,7 @@ export function startWebSocketServer(config: WebSocketServerConfig): WebSocketSe
     });
 
     ws.on('close', () => {
-      console.log('Client disconnected');
+      console.log(`Client disconnected: ${sessionId}`);
       session.destroy();
       onDisconnect?.(ws);
     });
