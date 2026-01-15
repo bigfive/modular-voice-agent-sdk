@@ -861,6 +861,32 @@ export class VoiceClient {
   }
 
   /**
+   * Get the underlying WebSocket connection.
+   * Useful for sending/receiving custom app-specific messages outside the voice protocol.
+   * Returns null if not using server mode or not connected.
+   *
+   * @example
+   * ```typescript
+   * // Send a custom message
+   * const envelope: ClientEnvelope = {
+   *   sessionId: client.getSessionId()!,
+   *   requestId: generateId('req'),
+   *   message: { type: 'my_custom_message', data: {...} } as any,
+   * };
+   * client.getWebSocket()?.send(JSON.stringify(envelope));
+   *
+   * // Listen for custom messages
+   * client.getWebSocket()?.addEventListener('message', (event) => {
+   *   const envelope = JSON.parse(event.data) as ServerEnvelope;
+   *   if (envelope.message.type === 'my_custom_response') { ... }
+   * });
+   * ```
+   */
+  getWebSocket(): WebSocket | null {
+    return this.ws;
+  }
+
+  /**
    * Subscribe to events
    */
   on<K extends EventName>(event: K, callback: VoiceClientEvents[K]): void {
