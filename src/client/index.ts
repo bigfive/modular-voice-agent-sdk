@@ -30,6 +30,8 @@ export type {
   BrowserSupport,
   ClientComponents,
   ClientComponentFactory,
+  EventMeta,
+  ToolCallInfo,
 } from './voice-client';
 
 // Re-export ModelStore for convenience (also available from main module)

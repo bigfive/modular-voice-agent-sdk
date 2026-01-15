@@ -163,21 +163,31 @@ export interface ToolCallInfo {
   arguments: Record<string, unknown>;
 }
 
+/**
+ * Metadata passed to event callbacks for request/response correlation.
+ * - requestId: The client-generated request ID for this user turn
+ * - responseId: The server-generated response ID for this specific message (null for local mode)
+ */
+export interface EventMeta {
+  requestId: string;
+  responseId: string | null;
+}
+
 export interface VoiceClientEvents {
   /** Connection/initialization status changed */
   status: (status: VoiceClientStatus) => void;
   /** User transcript received (from STT) */
-  transcript: (text: string) => void;
+  transcript: (text: string, meta: EventMeta) => void;
   /** Assistant response chunk (streaming) */
-  responseChunk: (text: string) => void;
+  responseChunk: (text: string, meta: EventMeta) => void;
   /** Full response complete */
-  responseComplete: (fullText: string) => void;
+  responseComplete: (fullText: string, meta: EventMeta) => void;
   /** Tool call started (function calling) */
-  toolCall: (toolCall: ToolCallInfo) => void;
+  toolCall: (toolCall: ToolCallInfo, meta: EventMeta) => void;
   /** Tool call result received */
-  toolResult: (toolCallId: string, result: unknown) => void;
+  toolResult: (toolCallId: string, result: unknown, meta: EventMeta) => void;
   /** Error occurred */
-  error: (error: Error) => void;
+  error: (error: Error, meta: EventMeta) => void;
   /** Model loading progress (for local models) */
   progress: (info: { status: string; file?: string; progress?: number }) => void;
 }
@@ -193,6 +203,13 @@ function isWebSpeechSTT(obj: unknown): obj is WebSpeechSTT {
 
 function isWebSpeechTTS(obj: unknown): obj is WebSpeechTTS {
   return obj instanceof WebSpeechTTS;
+}
+
+/**
+ * Create EventMeta for local mode (no server responseId)
+ */
+function createLocalMeta(requestId: string | null): EventMeta {
+  return { requestId: requestId ?? '', responseId: null };
 }
 
 // ============ Voice Client ============
@@ -423,7 +440,7 @@ export class VoiceClient {
     webSpeechSTT.onResult((result) => {
       if (result.isFinal && result.transcript.trim()) {
         const text = result.transcript.trim();
-        this.emit('transcript', text);
+        this.emit('transcript', text, createLocalMeta(this.currentRequestId));
 
         if (this.mode === 'local' || (this.mode === 'hybrid' && this.localLLM)) {
           // Process locally
@@ -443,7 +460,7 @@ export class VoiceClient {
     });
 
     webSpeechSTT.onError((error) => {
-      this.emit('error', error);
+      this.emit('error', error, createLocalMeta(this.currentRequestId));
       this.setStatus('ready');
     });
   }
@@ -528,7 +545,7 @@ export class VoiceClient {
     };
 
     this.ws.onerror = () => {
-      this.emit('error', new Error('WebSocket error'));
+      this.emit('error', new Error('WebSocket error'), createLocalMeta(this.currentRequestId));
     };
 
     this.ws.onmessage = (event) => {
@@ -536,7 +553,7 @@ export class VoiceClient {
         const envelope = JSON.parse(event.data) as ServerEnvelope;
         this.handleServerEnvelope(envelope);
       } catch {
-        this.emit('error', new Error('Failed to parse server message'));
+        this.emit('error', new Error('Failed to parse server message'), createLocalMeta(this.currentRequestId));
       }
     };
   }
@@ -634,6 +651,7 @@ export class VoiceClient {
 
   private async processLocalAudio(): Promise<void> {
     this.setStatus('processing');
+    const meta = createLocalMeta(this.currentRequestId);
 
     // Convert blob to Float32Array
     const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
@@ -644,7 +662,7 @@ export class VoiceClient {
 
     // Transcribe locally
     if (!this.localSTT || isWebSpeechSTT(this.localSTT)) {
-      this.emit('error', new Error('Local STT pipeline not available'));
+      this.emit('error', new Error('Local STT pipeline not available'), meta);
       this.setStatus('ready');
       return;
     }
@@ -656,7 +674,7 @@ export class VoiceClient {
         return;
       }
 
-      this.emit('transcript', transcript);
+      this.emit('transcript', transcript, meta);
 
       if (this.mode === 'local' || (this.mode === 'hybrid' && this.localLLM)) {
         // Process locally
@@ -666,7 +684,7 @@ export class VoiceClient {
         this.send({ type: 'text', text: transcript });
       }
     } catch (error) {
-      this.emit('error', error instanceof Error ? error : new Error(String(error)));
+      this.emit('error', error instanceof Error ? error : new Error(String(error)), meta);
       this.setStatus('ready');
     }
   }
@@ -685,6 +703,7 @@ export class VoiceClient {
 
   private async runLocalPipeline(text: string): Promise<void> {
     if (!this.localPipeline) return;
+    const meta = createLocalMeta(this.currentRequestId);
 
     // Initialize history if empty
     if (this.history.length === 0) {
@@ -696,10 +715,10 @@ export class VoiceClient {
     };
 
     const callbacks = {
-      onTranscript: (t: string) => this.emit('transcript', t),
+      onTranscript: (t: string) => this.emit('transcript', t, meta),
       onResponseChunk: (chunk: string) => {
         this.currentResponse += chunk;
-        this.emit('responseChunk', chunk);
+        this.emit('responseChunk', chunk, meta);
 
         // If using WebSpeechTTS separately, queue text
         if (isWebSpeechTTS(this.localTTS)) {
@@ -714,7 +733,7 @@ export class VoiceClient {
         }
       },
       onComplete: () => {
-        this.emit('responseComplete', this.currentResponse);
+        this.emit('responseComplete', this.currentResponse, meta);
 
         if (isWebSpeechTTS(this.localTTS)) {
           this.flushLocalTTS();
@@ -723,7 +742,7 @@ export class VoiceClient {
         }
       },
       onError: (err: Error) => {
-        this.emit('error', err);
+        this.emit('error', err, meta);
         this.setStatus('ready');
       },
     };
@@ -734,6 +753,7 @@ export class VoiceClient {
 
   private async runLocalLLM(text: string): Promise<void> {
     if (!this.localLLM) return;
+    const meta = createLocalMeta(this.currentRequestId);
 
     // Initialize history if empty
     if (this.history.length === 0) {
@@ -747,7 +767,7 @@ export class VoiceClient {
       const result = await this.localLLM.generate(this.history, {
         onToken: (token: string) => {
           this.currentResponse += token;
-          this.emit('responseChunk', token);
+          this.emit('responseChunk', token, meta);
 
           if (isWebSpeechTTS(this.localTTS)) {
             this.handleLocalTTSChunk(token);
@@ -764,7 +784,7 @@ export class VoiceClient {
       // Add assistant response to history
       this.history.push({ role: 'assistant' as const, content: result.content });
 
-      this.emit('responseComplete', result.content);
+      this.emit('responseComplete', result.content, meta);
 
       if (isWebSpeechTTS(this.localTTS)) {
         await this.flushLocalTTS();
@@ -774,7 +794,7 @@ export class VoiceClient {
         this.setStatus('ready');
       }
     } catch (error) {
-      this.emit('error', error instanceof Error ? error : new Error(String(error)));
+      this.emit('error', error instanceof Error ? error : new Error(String(error)), meta);
       this.setStatus('ready');
     }
   }
@@ -930,7 +950,8 @@ export class VoiceClient {
   }
 
   private handleServerEnvelope(envelope: ServerEnvelope): void {
-    const { message: msg } = envelope;
+    const { message: msg, requestId, responseId } = envelope;
+    const meta: EventMeta = { requestId: requestId ?? '', responseId };
 
     switch (msg.type) {
       case 'session_init':
@@ -950,13 +971,13 @@ export class VoiceClient {
         // Server did STT - only relevant if we're not using local STT
         if (!this.localSTT) {
           this.currentResponse = '';
-          this.emit('transcript', msg.text);
+          this.emit('transcript', msg.text, meta);
         }
         break;
 
       case 'response_chunk':
         this.currentResponse += msg.text;
-        this.emit('responseChunk', msg.text);
+        this.emit('responseChunk', msg.text, meta);
 
         // If using local TTS, queue text for speech
         if (this.localTTS) {
@@ -977,15 +998,15 @@ export class VoiceClient {
           id: msg.toolCallId,
           name: msg.name,
           arguments: msg.arguments,
-        });
+        }, meta);
         break;
 
       case 'tool_result':
-        this.emit('toolResult', msg.toolCallId, msg.result);
+        this.emit('toolResult', msg.toolCallId, msg.result, meta);
         break;
 
       case 'complete':
-        this.emit('responseComplete', this.currentResponse);
+        this.emit('responseComplete', this.currentResponse, meta);
 
         if (this.localTTS) {
           // Flush any remaining TTS text
@@ -1001,7 +1022,7 @@ export class VoiceClient {
         break;
 
       case 'error':
-        this.emit('error', new Error(msg.message));
+        this.emit('error', new Error(msg.message), meta);
         this.setStatus('ready');
         break;
     }
