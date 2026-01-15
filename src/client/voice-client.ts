@@ -1006,12 +1006,18 @@ export class VoiceClient {
       case 'transcript':
         // Server did STT - only relevant if we're not using local STT
         if (!this.localSTT) {
+          // New response starting - don't go to 'ready' until 'complete' received
+          this.responseComplete = false;
           this.currentResponse = '';
           this.emit('transcript', msg.text, meta);
         }
         break;
 
       case 'response_chunk':
+        // If this is the first chunk (e.g., server-initiated message), mark response as in progress
+        if (this.responseComplete) {
+          this.responseComplete = false;
+        }
         this.currentResponse += msg.text;
         this.emit('responseChunk', msg.text, meta);
 
