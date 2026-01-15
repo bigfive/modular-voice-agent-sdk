@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0] - 2026-01-15
+
+### New Features
+
+**EventMeta on Event Callbacks**
+
+All request-scoped events now receive an `EventMeta` parameter for request/response correlation:
+
+```typescript
+interface EventMeta {
+  requestId: string;
+  responseId: string | null;  // null in local mode
+}
+
+client.on('transcript', (text: string, meta: EventMeta) => {
+  console.log(`Request ${meta.requestId}: ${text}`);
+});
+
+client.on('responseChunk', (text: string, meta: EventMeta) => {});
+client.on('responseComplete', (fullText: string, meta: EventMeta) => {});
+client.on('toolCall', (toolCall: ToolCallInfo, meta: EventMeta) => {});
+client.on('toolResult', (toolCallId: string, result: unknown, meta: EventMeta) => {});
+client.on('error', (error: Error, meta: EventMeta) => {});
+```
+
+Note: `status` and `progress` events do not include meta (they are not request-scoped).
+
+### New Exports
+
+- `EventMeta` - Type for event metadata
+- `ToolCallInfo` - Type for tool call information
+
+## [2.1.0] - 2026-01-15
+
+### New Features
+
+**WebSocket Access**
+
+Added `getWebSocket()` method to `VoiceClient` for custom app-specific messages:
+
+```typescript
+const ws = client.getWebSocket();
+// Send custom messages, add event listeners, etc.
+```
+
 ## [2.0.0] - 2026-01-15
 
 ### Breaking Changes
