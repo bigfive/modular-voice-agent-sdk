@@ -329,6 +329,9 @@ export class VoiceClient {
   private sessionId: string | null = null;
   private currentRequestId: string | null = null;
 
+  // Tracks whether server has sent 'complete' message (for server TTS timing)
+  private responseComplete = true;
+
 
   constructor(config: VoiceClientConfig) {
     // Get components from factory, passing modelStore for caching
@@ -408,7 +411,9 @@ export class VoiceClient {
       this.player = new AudioPlayer({
         onStart: () => this.setStatus('speaking'),
         onEnd: () => {
-          if (this.status === 'speaking') {
+          // Only go to 'ready' if server has sent 'complete' message
+          // (otherwise we're just waiting for the next audio chunk)
+          if (this.status === 'speaking' && this.responseComplete) {
             this.setStatus('ready');
           }
         },
@@ -586,6 +591,7 @@ export class VoiceClient {
 
     // Generate new requestId for this user turn
     this.currentRequestId = generateId('req');
+    this.responseComplete = false;
 
     // Stop any current playback
     this.player?.clear();
@@ -868,6 +874,9 @@ export class VoiceClient {
     // Stop server audio player
     this.player?.stop();
 
+    // Mark response as complete since we're forcibly stopping
+    this.responseComplete = true;
+
     if (this.status === 'speaking') {
       this.setStatus('ready');
     }
@@ -1033,13 +1042,15 @@ export class VoiceClient {
         break;
 
       case 'complete':
+        this.responseComplete = true;
         this.emit('responseComplete', this.currentResponse, meta);
 
         if (this.localTTS) {
           // Flush any remaining TTS text
           this.flushLocalTTS();
         } else if (this.player) {
-          // Status will change to 'ready' when audio finishes
+          // If audio already finished, go to ready now
+          // Otherwise, onEnd callback will handle it
           if (!this.player.playing && this.player.queueLength === 0) {
             this.setStatus('ready');
           }
