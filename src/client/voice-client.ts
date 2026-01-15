@@ -314,7 +314,7 @@ export class VoiceClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingTTSText = '';
   private ttsQueue: string[] = [];
-  private isSpeaking = false;
+  private localTTSActive = false;
 
   // Conversation state (for local mode)
   private history: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string }> = [];
@@ -593,7 +593,7 @@ export class VoiceClient {
       this.localTTS.stop();
     }
     this.ttsQueue = [];
-    this.isSpeaking = false;
+    this.localTTSActive = false;
 
     if (isWebSpeechSTT(this.localSTT)) {
       // Use browser speech recognition
@@ -847,6 +847,33 @@ export class VoiceClient {
   }
 
   /**
+   * Check if audio is currently being spoken (local TTS or server audio).
+   * For server TTS, this returns true while playing OR waiting for the next audio chunk.
+   */
+  get isSpeaking(): boolean {
+    return this.localTTSActive || (this.player?.playing ?? false) || this.status === 'speaking';
+  }
+
+  /**
+   * Stop any current speech playback (local TTS or server audio)
+   */
+  stopSpeaking(): void {
+    // Stop local TTS
+    if (isWebSpeechTTS(this.localTTS)) {
+      this.localTTS.stop();
+    }
+    this.ttsQueue = [];
+    this.localTTSActive = false;
+
+    // Stop server audio player
+    this.player?.stop();
+
+    if (this.status === 'speaking') {
+      this.setStatus('ready');
+    }
+  }
+
+  /**
    * Get current mode
    */
   getMode(): 'local' | 'remote' | 'hybrid' {
@@ -1058,9 +1085,9 @@ export class VoiceClient {
   }
 
   private async processLocalTTSQueue(): Promise<void> {
-    if (this.isSpeaking || this.ttsQueue.length === 0 || !this.localTTS) return;
+    if (this.localTTSActive || this.ttsQueue.length === 0 || !this.localTTS) return;
 
-    this.isSpeaking = true;
+    this.localTTSActive = true;
     this.setStatus('speaking');
 
     while (this.ttsQueue.length > 0) {
@@ -1078,7 +1105,7 @@ export class VoiceClient {
       }
     }
 
-    this.isSpeaking = false;
+    this.localTTSActive = false;
     if (this.status === 'speaking') {
       this.setStatus('ready');
     }
