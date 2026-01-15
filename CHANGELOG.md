@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.0] - 2026-01-16
+
+### New Features
+
+**Speaking State and Control**
+
+Added `isSpeaking` getter and `stopSpeaking()` method to `VoiceClient` for monitoring and controlling speech playback:
+
+```typescript
+// Check if audio is currently being spoken (local TTS or server audio)
+if (client.isSpeaking) {
+  console.log('Currently speaking...');
+}
+
+// Stop any current speech playback
+client.stopSpeaking();
+```
+
+The `isSpeaking` getter returns `true` when:
+- Local TTS is actively speaking
+- Server audio is playing
+- Client status is 'speaking'
+
 ## [2.2.1] - 2026-01-15
 
 ### Fixed
