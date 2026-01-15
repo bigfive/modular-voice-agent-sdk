@@ -36,12 +36,13 @@ function sendEnvelope(
   ws: WebSocket,
   sessionId: string,
   requestId: string | null,
+  responseId: string,
   message: ServerMessage
 ): void {
   const envelope: ServerEnvelope = {
     sessionId,
     requestId,
-    responseId: generateId('res'),
+    responseId,
     message,
   };
   ws.send(JSON.stringify(envelope));
@@ -77,10 +78,27 @@ export function startWebSocketServer(config: WebSocketServerConfig): WebSocketSe
     onConnect?.(ws, session);
 
     // Send session_init message to client
-    sendEnvelope(ws, sessionId, null, {
+    sendEnvelope(ws, sessionId, null, generateId('res'), {
       type: 'session_init',
       sessionId,
     });
+
+    let currentResponseId: string | null = null;
+    const nextResponseId = (): string => {
+      currentResponseId = generateId('res');
+      return currentResponseId;
+    };
+
+    const getStreamingResponseId = (): string => {
+      if (!currentResponseId) {
+        return nextResponseId();
+      }
+      return currentResponseId;
+    };
+
+    const resetStreamingResponseId = (): void => {
+      currentResponseId = null;
+    };
 
     ws.on('message', async (data) => {
       try {
@@ -98,7 +116,30 @@ export function startWebSocketServer(config: WebSocketServerConfig): WebSocketSe
 
         // Route message through session handler
         for await (const response of session.handle(message)) {
-          sendEnvelope(ws, sessionId, requestId, response);
+          let responseId: string;
+          switch (response.type) {
+            case 'response_chunk':
+            case 'audio':
+            case 'complete':
+              responseId = getStreamingResponseId();
+              break;
+            case 'transcript':
+              responseId = nextResponseId();
+              break;
+            case 'tool_call':
+            case 'tool_result':
+            case 'error':
+            case 'session_init':
+            default:
+              responseId = nextResponseId();
+              break;
+          }
+
+          sendEnvelope(ws, sessionId, requestId, responseId, response);
+
+          if (response.type === 'complete' || response.type === 'error') {
+            resetStreamingResponseId();
+          }
         }
       } catch (err) {
         console.error('Message error:', err);

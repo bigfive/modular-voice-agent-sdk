@@ -1028,6 +1028,7 @@ export class VoiceClient {
     }
   }
 
+
   private handleLocalTTSChunk(text: string): void {
     // Accumulate text and speak sentence by sentence
     this.pendingTTSText += text;

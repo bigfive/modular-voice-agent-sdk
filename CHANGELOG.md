@@ -2,6 +2,47 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.1] - 2026-01-15
+
+### Fixed
+
+**responseId Grouping by Stream Segments**
+
+The `responseId` is now grouped logically by stream segments instead of generating a new ID for every message:
+
+- `transcript` gets its own `responseId`
+- `response_chunk` + `audio` + `complete` share one `responseId` (streaming segment)
+- `tool_call` and `tool_result` each get their own `responseId`
+- After `complete` or `error`, the streaming `responseId` resets for the next segment
+
+Before:
+```
+req_001 → res_001: transcript
+req_001 → res_002: response_chunk "Let"
+req_001 → res_003: response_chunk "me"
+req_001 → res_004: response_chunk "check"
+req_001 → res_005: tool_call (get_weather)
+req_001 → res_006: tool_result (weather data)
+req_001 → res_007: response_chunk "The"
+req_001 → res_008: complete
+```
+
+After:
+```
+req_001 → res_001: transcript
+req_001 → res_002: response_chunk "Let"
+req_001 → res_002: response_chunk "me check"
+req_001 → res_002: audio
+req_001 → res_002: complete
+req_001 → res_003: tool_call (get_weather)
+req_001 → res_004: tool_result (weather data)
+req_001 → res_005: response_chunk "The weather is..."
+req_001 → res_005: audio
+req_001 → res_005: complete
+```
+
+This makes it easier to correlate streaming chunks with their audio and completion signals.
+
 ## [2.2.0] - 2026-01-15
 
 ### New Features

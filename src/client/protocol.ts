@@ -15,7 +15,7 @@ export type IdPrefix = 'ses' | 'req' | 'res';
  * Generate a ULID-based identifier with a prefix.
  * - ses_<ulid> - Session ID (server-generated on connect)
  * - req_<ulid> - Request ID (client-generated per user turn)
- * - res_<ulid> - Response ID (server-generated per message)
+ * - res_<ulid> - Response ID (server-generated per response)
  */
 export function generateId(prefix: IdPrefix): string {
   return `${prefix}_${ulid()}`;
