@@ -53,6 +53,9 @@ Each component can run in the browser, on a server, or in the cloud. Pick any fr
               N/A                         ☁️ Cloud Audio LLM                         N/A
                                             (GPT Audio, multimodal)
 
+              N/A                         🤖 Agent SDK                               N/A
+                                            (OpenCode, Pi Agent)
+
 ```
 
 Want browser speech recognition + a cloud LLM + browser speech synthesis? Done. Want everything running locally on your server with native binaries? Also done. Same code structure, same events, different backends.
@@ -61,6 +64,7 @@ Want browser speech recognition + a cloud LLM + browser speech synthesis? Done. 
 
 - **Streaming** — responses stream token-by-token to TTS
 - **Function calling** — tools work across all LLM backends (cloud, native, transformers)
+- **Agent SDK support** — wrap coding agents (OpenCode, Pi Agent) as voice-controlled backends
 - **Conversation history** — automatic context management
 - **Hybrid configs** — mix browser and server components freely
 

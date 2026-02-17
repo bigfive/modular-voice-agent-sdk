@@ -18,6 +18,7 @@ npm run example7  # Native STT + Transformers.js LLM (port 3102)
 npm run example8  # WebSpeech + Cloud LLM (port 3105)
 npm run example9  # Native STT/TTS + Cloud LLM (port 3106)
 npm run example10 # CloudAudioLLM multimodal (port 3107)
+npm run example11 # Pi Agent voice coding (port 3108)
 ```
 
 > **Note:** Each server example loads ML models into memory. Run one at a time to avoid exhausting RAM.
@@ -36,6 +37,7 @@ npm run example10 # CloudAudioLLM multimodal (port 3107)
 | 8 | `example-8-speech-cloud-speech` | Hybrid | WebSpeech STT → Cloud LLM → WebSpeech TTS |
 | 9 | `example-9-native-cloud-native` | Remote | whisper.cpp → Cloud LLM → sherpa-onnx |
 | 10 | `example-10-cloudaudio-speech` | Remote | CloudAudioLLM (multimodal) → WebSpeech TTS |
+| 11 | `example-11-speech-agent-speech` | Agent | WebSpeech STT → Pi Agent (read/bash/edit/write) → WebSpeech TTS |
 
 ## All Possible Configurations
 
@@ -48,6 +50,7 @@ Naming convention: `{stt}-{llm}-{tts}` where each component is:
 | **browser** | Whisper Transformers.js (browser) | TransformersLLM/Phi3 Transformers.js (browser) | ⚠️ No good model yet |
 | **cloud** | ❌ N/A | OpenAI/Ollama/vLLM (server) | ❌ N/A |
 | **cloudaudio** | CloudAudioLLM (multimodal) | CloudAudioLLM (multimodal) | ❌ N/A |
+| **agent** | ❌ N/A | Agent SDK (OpenCode, Pi Agent) | ❌ N/A |
 | **speech** | WebSpeech API (browser) | ❌ N/A | WebSpeech API (browser) |
 
 ### Fully Local (4 combinations)
@@ -129,10 +132,10 @@ Naming convention: `{stt}-{llm}-{tts}` where each component is:
 
 ### Summary
 
-- **52 total** configurations (with cloud LLM option)
+- **52+ total** configurations (with cloud LLM and agent options)
 - **38 currently possible** (✅)
 - **14 waiting on browser TTS model** (⚠️)
-- **10 examples** provided
+- **11 examples** provided
 
 ## Server Ports
 
@@ -146,6 +149,7 @@ Naming convention: `{stt}-{llm}-{tts}` where each component is:
 | example8 (`speech-cloud-speech`) | 3105 |
 | example9 (`native-cloud-native`) | 3106 |
 | example10 (`cloudaudio-speech`) | 3107 |
+| example11 (`speech-agent-speech`) | 3108 |
 
 ## Prerequisites
 
@@ -168,5 +172,10 @@ No additional setup needed - models download automatically on first run.
 ### For Cloud LLM Examples
 ```bash
 export OPENAI_API_KEY=sk-your-key-here
+```
+
+### For Agent SDK Examples (Example 11)
+```bash
+npm install @mariozechner/pi-agent-core @mariozechner/pi-ai @mariozechner/pi-coding-agent
 ```
 
