@@ -23,6 +23,7 @@ import type {
   TurnContext,
 } from './types';
 import { TextNormalizer, getDefaultLogger } from './services';
+import type { TextReplacement } from './services';
 
 /** Maximum number of tool call iterations to prevent infinite loops */
 const MAX_TOOL_ITERATIONS = 10;
@@ -117,6 +118,26 @@ export interface VoicePipelineConfig {
    * @default ["Let me check that for you.", "One moment please.", "Let me look that up."]
    */
   toolFillerPhrases?: string[];
+
+  /**
+   * Custom text replacements for speech normalization.
+   * Applied before other normalizations (numbers, symbols, etc.).
+   *
+   * @example
+   * ```typescript
+   * textReplacements: [
+   *   // Simple string replacement
+   *   ['1:1', 'one on one'],
+   *   // Regex with capture groups
+   *   [/PR#(\d+)/g, 'PR $1'],
+   *   // Function replacement
+   *   [/v(\d+)\.(\d+)/g, (_, major, minor) => `version ${major} point ${minor}`],
+   *   // Case-insensitive
+   *   [/\bAPI\b/gi, 'A P I'],
+   * ]
+   * ```
+   */
+  textReplacements?: TextReplacement[];
 }
 
 export interface VoicePipelineCallbacks {
@@ -129,6 +150,8 @@ export interface VoicePipelineCallbacks {
   onToolCall?: (toolCall: ToolCall) => void;
   /** Called when a tool execution completes */
   onToolResult?: (toolCallId: string, result: unknown) => void;
+  /** Check if the turn has been cancelled (e.g., session destroyed). If true, tool execution is skipped. */
+  isCancelled?: () => boolean;
 }
 
 /**
@@ -161,7 +184,7 @@ export class VoicePipeline {
   // Internal components for pipeline's own use (e.g., local/browser mode)
   private components: PipelineComponents | null = null;
 
-  private textNormalizer = new TextNormalizer();
+  private textNormalizer: TextNormalizer;
   private tools: Map<string, Tool> = new Map();
   private toolDefinitions: ToolDefinition[] = [];
   private toolFillerPhrases: string[];
@@ -173,6 +196,9 @@ export class VoicePipeline {
   constructor(config: VoicePipelineConfig) {
     this.factory = config.create;
     this.toolFillerPhrases = config.toolFillerPhrases ?? DEFAULT_TOOL_FILLER_PHRASES;
+    this.textNormalizer = new TextNormalizer({
+      replacements: config.textReplacements,
+    });
 
     // Register tools
     if (config.tools) {
@@ -472,13 +498,30 @@ export class VoicePipeline {
       if (!toolCalls || toolCalls.length === 0) {
         // Only call streamResponse if we didn't stream during generation
         // Native tools stream during generation, so skip here
-        if (!shouldStream) {
+        if (!shouldStream && result.content) {
           await this.streamResponse(result.content, callbacks, tts);
         }
 
-        const assistantMsg: Message = { role: 'assistant', content: result.content };
-        context.history.push(assistantMsg);
-        newMessages.push(assistantMsg);
+        // Only add non-empty assistant messages to history
+        // Empty responses are valid (model chose silence) but can't be in middle of conversation
+        if (result.content) {
+          const assistantMsg: Message = { role: 'assistant', content: result.content };
+          context.history.push(assistantMsg);
+          newMessages.push(assistantMsg);
+        }
+        return newMessages;
+      }
+
+      // Check if cancelled before executing tools (e.g., user pressed stop)
+      // The LLM response has already streamed, but we skip tool execution
+      if (callbacks.isCancelled?.()) {
+        // Add the assistant message without executing tools
+        // History repair will add placeholder tool_results if session resumes
+        if (result.content) {
+          const assistantMsg: Message = { role: 'assistant', content: result.content };
+          context.history.push(assistantMsg);
+          newMessages.push(assistantMsg);
+        }
         return newMessages;
       }
 
