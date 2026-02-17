@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.0] - 2026-02-17
+
+### New Features
+
+**Custom Text Replacements**
+
+TextNormalizer now supports custom replacement rules for speech normalization. Replacements accept string or regex patterns and run before built-in normalizations:
+
+```typescript
+const pipeline = new VoicePipeline({
+  textReplacements: [
+    ['1:1', 'one on one'],
+    [/PR#(\d+)/g, 'PR $1'],
+    [/\bAPI\b/gi, 'A P I'],
+  ],
+});
+```
+
+**Pipeline Cancellation Support**
+
+Session `destroy()` now signals in-progress pipelines to stop. Tool execution is skipped when a session is cancelled, and cancelled pipelines are left to clean up in the background rather than blocking.
+
+### Fixed
+
+- Empty LLM responses with `end_turn`/`stop` finish reason are now treated as valid (model chose silence) instead of throwing an error. Only `length` (token limit) still throws.
+- Empty assistant messages are no longer added to conversation history, preventing issues mid-conversation.
+
 ## [2.3.0] - 2026-01-16
 
 ### New Features
