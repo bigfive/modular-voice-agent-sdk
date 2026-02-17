@@ -31,6 +31,7 @@ interface ClientCapabilities {
 export class PipelineSession {
   private audioChunks: Float32Array[] = [];
   private destroyed = false;
+  private destroyedResolve: (() => void) | null = null;
   private capabilities: ClientCapabilities = {
     hasSTT: false,
     hasTTS: false,
@@ -300,28 +301,43 @@ export class PipelineSession {
         enqueue({ type: 'error', message: err.message });
         isComplete = true;
       },
+      // Pass cancellation check to pipeline - stops tool execution when session destroyed
+      isCancelled: () => this.destroyed,
     });
 
     // Yield messages as they arrive
-    while (!isComplete || messageQueue.length > 0) {
+    // Exit early if session is destroyed (user cancelled)
+    while ((!isComplete || messageQueue.length > 0) && !this.destroyed) {
       if (messageQueue.length > 0) {
         yield messageQueue.shift()!;
       } else if (!isComplete) {
         await new Promise<void>((resolve) => {
           resolveWaiting = resolve;
+          // Store resolve so destroy() can wake us up
+          this.destroyedResolve = resolve;
         });
+        this.destroyedResolve = null;
       }
     }
 
-    await pipelinePromise;
+    // Only await pipeline if not destroyed - let cancelled pipelines die in background
+    if (!this.destroyed) {
+      await pipelinePromise;
+    }
   }
 
   /**
-   * Clean up session resources
+   * Clean up session resources.
+   * Also signals any in-progress pipeline to stop yielding messages.
    */
   destroy(): void {
     this.destroyed = true;
     this.audioChunks = [];
+    // Wake up any waiting promise so runPipeline can exit its loop
+    if (this.destroyedResolve) {
+      this.destroyedResolve();
+      this.destroyedResolve = null;
+    }
   }
 }
 
