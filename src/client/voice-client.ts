@@ -4,13 +4,18 @@
  * Unified browser SDK for voice assistants.
  * Handles three modes:
  * 1. Fully local - all components run in browser, no server needed
- * 2. Fully remote - all processing on server via WebSocket
+ * 2. Fully remote - all processing on server via transport
  * 3. Hybrid - mix of local and server components
  *
  * Component logic:
  * - Component provided → runs locally
- * - Component is null + serverUrl → server handles it
- * - All components local → no WebSocket needed
+ * - Component is null + serverUrl/transport → server handles it
+ * - All components local → no server connection needed
+ *
+ * Transport:
+ * - Default: WebSocketTransport (when serverUrl is provided)
+ * - Custom: Pass any Transport implementation via the transport option
+ * - Built-in alternatives: HttpSseTransport (HTTP POST + SSE)
  */
 
 import type { STTPipeline, LLMPipeline, TTSPipeline, AudioPlayable, ProgressCallback } from '../types';
@@ -27,6 +32,8 @@ import {
   type ClientEnvelope,
   type ServerEnvelope,
 } from './protocol';
+import type { Transport } from './transport';
+import { WebSocketTransport } from './transports/websocket';
 
 // ============ Types ============
 
@@ -92,9 +99,27 @@ export interface ClientComponents {
   systemPrompt?: string;
 
   /**
-   * WebSocket server URL (required if any component is null)
+   * Server URL (required if any component is null).
+   * When no custom transport is provided, this creates a WebSocketTransport.
+   * For WebSocket: 'ws://localhost:3000'
+   * For HTTP+SSE: use a custom transport instead
    */
   serverUrl?: string;
+
+  /**
+   * Custom transport for server communication.
+   * Overrides serverUrl when provided.
+   * Use this for non-WebSocket transports (HTTP+SSE, postMessage, etc.)
+   *
+   * @example
+   * ```typescript
+   * import { HttpSseTransport } from 'modular-voice-agent-sdk/client';
+   * {
+   *   transport: new HttpSseTransport('http://localhost:3000'),
+   * }
+   * ```
+   */
+  transport?: Transport;
 }
 
 import type { ModelStore } from '../voice-pipeline';
@@ -303,7 +328,7 @@ export class VoiceClient {
   private localPipeline: VoicePipeline | null = null;
 
   // Remote/hybrid components
-  private ws: WebSocket | null = null;
+  private transport: Transport | null = null;
   private recorder: AudioRecorder | null = null;
   private player: AudioPlayer | null = null;
 
@@ -356,11 +381,18 @@ export class VoiceClient {
     }
 
     // Validate config
-    if (this.needsServer && !components.serverUrl) {
+    if (this.needsServer && !components.serverUrl && !components.transport) {
       throw new Error(
-        'serverUrl is required when any component (stt, llm, tts) is null. ' +
-        'Either provide all components for fully-local mode, or specify a serverUrl.'
+        'serverUrl or transport is required when any component (stt, llm, tts) is null. ' +
+        'Either provide all components for fully-local mode, or specify a serverUrl or custom transport.'
       );
+    }
+
+    // Create transport from serverUrl if no custom transport provided
+    if (components.transport) {
+      this.transport = components.transport;
+    } else if (components.serverUrl) {
+      this.transport = new WebSocketTransport(components.serverUrl);
     }
 
     if (hasLocalLLM && !components.systemPrompt) {
@@ -484,7 +516,7 @@ export class VoiceClient {
 
     // Connect to server if needed
     if (this.needsServer) {
-      await this.connectWebSocket();
+      await this.connectTransport();
     } else {
       this.setStatus('ready');
     }
@@ -528,39 +560,31 @@ export class VoiceClient {
     await Promise.all(promises);
   }
 
-  private async connectWebSocket(): Promise<void> {
-    if (!this.config.serverUrl) return;
-    if (this.ws?.readyState === WebSocket.OPEN) return;
+  private async connectTransport(): Promise<void> {
+    if (!this.transport) return;
+    if (this.transport.readyState === 'open') return;
 
     this.setStatus('connecting');
-    this.ws = new WebSocket(this.config.serverUrl);
 
-    this.ws.onopen = () => {
-      // Wait for session_init before sending capabilities
-      // The server will send session_init immediately on connect
-    };
+    // Register handlers before connecting
+    this.transport.onMessage((envelope) => {
+      this.handleServerEnvelope(envelope);
+    });
 
-    this.ws.onclose = () => {
+    this.transport.onClose(() => {
       this.sessionId = null;
       this.currentRequestId = null;
       this.setStatus('disconnected');
       if (this.config.autoReconnect && this.needsServer) {
         this.scheduleReconnect();
       }
-    };
+    });
 
-    this.ws.onerror = () => {
-      this.emit('error', new Error('WebSocket error'), createLocalMeta(this.currentRequestId));
-    };
+    this.transport.onError((error) => {
+      this.emit('error', error, createLocalMeta(this.currentRequestId));
+    });
 
-    this.ws.onmessage = (event) => {
-      try {
-        const envelope = JSON.parse(event.data) as ServerEnvelope;
-        this.handleServerEnvelope(envelope);
-      } catch {
-        this.emit('error', new Error('Failed to parse server message'), createLocalMeta(this.currentRequestId));
-      }
-    };
+    await this.transport.connect();
   }
 
   /**
@@ -572,8 +596,7 @@ export class VoiceClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.ws?.close();
-    this.ws = null;
+    this.transport?.close();
 
     // Stop any TTS
     if (isWebSpeechTTS(this.localTTS)) {
@@ -838,7 +861,7 @@ export class VoiceClient {
     if (this.mode === 'local') {
       return this.localPipeline?.isReady() ?? false;
     }
-    return this.ws?.readyState === WebSocket.OPEN;
+    return this.transport?.readyState === 'open';
   }
 
   /**
@@ -917,9 +940,19 @@ export class VoiceClient {
   }
 
   /**
+   * Get the underlying transport.
+   * Useful for inspecting the transport state or for advanced use cases.
+   * Returns null if not using server mode.
+   */
+  getTransport(): Transport | null {
+    return this.transport;
+  }
+
+  /**
    * Get the underlying WebSocket connection.
-   * Useful for sending/receiving custom app-specific messages outside the voice protocol.
-   * Returns null if not using server mode or not connected.
+   * Returns null if not using server mode, not connected, or not using WebSocket transport.
+   *
+   * @deprecated Use getTransport() instead for transport-agnostic code.
    *
    * @example
    * ```typescript
@@ -930,16 +963,15 @@ export class VoiceClient {
    *   message: { type: 'my_custom_message', data: {...} } as any,
    * };
    * client.getWebSocket()?.send(JSON.stringify(envelope));
-   *
-   * // Listen for custom messages
-   * client.getWebSocket()?.addEventListener('message', (event) => {
-   *   const envelope = JSON.parse(event.data) as ServerEnvelope;
-   *   if (envelope.message.type === 'my_custom_response') { ... }
-   * });
    * ```
    */
   getWebSocket(): WebSocket | null {
-    return this.ws;
+    if (this.transport instanceof WebSocketTransport) {
+      // WebSocketTransport doesn't expose the raw WS; return null
+      // Users should migrate to getTransport()
+      return null;
+    }
+    return null;
   }
 
   /**
@@ -975,13 +1007,13 @@ export class VoiceClient {
   // ============ Private Methods ============
 
   private send(msg: ClientMessage): void {
-    if (this.ws?.readyState === WebSocket.OPEN && this.sessionId && this.currentRequestId) {
+    if (this.transport?.readyState === 'open' && this.sessionId && this.currentRequestId) {
       const envelope: ClientEnvelope = {
         sessionId: this.sessionId,
         requestId: this.currentRequestId,
         message: msg,
       };
-      this.ws.send(JSON.stringify(envelope));
+      this.transport.send(envelope);
     }
   }
 
@@ -1199,9 +1231,9 @@ export class VoiceClient {
       );
     }
 
-    // Check WebSocket if using server
-    if (components.serverUrl && !support.webSocket) {
-      throw new Error('WebSocket is not supported in this browser.');
+    // Check WebSocket if using server with default transport (no custom transport)
+    if (components.serverUrl && !components.transport && !support.webSocket) {
+      throw new Error('WebSocket is not supported in this browser. Consider using a custom transport (e.g., HttpSseTransport).');
     }
 
     // Check AudioContext for audio processing

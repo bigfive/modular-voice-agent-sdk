@@ -44,6 +44,12 @@ export type { WebSpeechSTTConfig, WebSpeechSTTResult } from './web-speech-stt';
 export { WebSpeechTTS } from './web-speech-tts';
 export type { WebSpeechTTSConfig } from './web-speech-tts';
 
+// Transport layer
+export type { Transport, TransportState } from './transport';
+export { WebSocketTransport } from './transports/websocket';
+export { HttpSseTransport } from './transports/http-sse';
+export type { HttpSseTransportConfig } from './transports/http-sse';
+
 // Lower-level utilities (for custom implementations)
 export { AudioRecorder } from './audio-recorder';
 export type { AudioRecorderConfig, AudioChunkCallback } from './audio-recorder';
