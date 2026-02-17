@@ -18,10 +18,14 @@
     "example8": "concurrently -k -n vite,server -c blue,#a78bfa \"vite --open /example-8-speech-cloud-speech/\" \"tsx watch example-8-speech-cloud-speech/server.ts\"",
     "example9": "concurrently -k -n vite,server -c blue,#f97316 \"vite --open /example-9-native-cloud-native/\" \"tsx watch example-9-native-cloud-native/server.ts\"",
     "example10": "concurrently -k -n vite,server -c blue,#f472b6 \"vite --open /example-10-cloudaudio-speech/\" \"tsx watch example-10-cloudaudio-speech/server.ts\"",
+    "example11": "concurrently -k -n vite,server -c blue,#e879f9 \"vite --open /example-11-speech-agent-speech/\" \"tsx watch example-11-speech-agent-speech/server.ts\"",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mariozechner/pi-agent-core": "^0.52.12",
+    "@mariozechner/pi-ai": "^0.52.12",
+    "@mariozechner/pi-coding-agent": "^0.52.12",
     "modular-voice-agent-sdk": "file:..",
     "ws": "^8.18.0"
   },

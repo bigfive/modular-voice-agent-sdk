@@ -1,6 +1,6 @@
 {
   "name": "modular-voice-agent-sdk",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Modular isomorphic STT → LLM → TTS pipeline library for AI voice agents and voice assistants",
   "type": "module",
   "main": "./dist/index.js",
@@ -26,6 +26,10 @@
     "./server": {
       "import": "./dist/server/index.js",
       "types": "./dist/server/index.d.ts"
+    },
+    "./agent": {
+      "import": "./dist/backends/agent/index.js",
+      "types": "./dist/backends/agent/index.d.ts"
     }
   },
   "bin": {
@@ -51,10 +55,26 @@
     "ulid": "^3.0.2"
   },
   "peerDependencies": {
-    "ws": "^8.0.0"
+    "ws": "^8.0.0",
+    "@opencode-ai/sdk": "*",
+    "@mariozechner/pi-agent-core": "*",
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*"
   },
   "peerDependenciesMeta": {
     "ws": {
+      "optional": true
+    },
+    "@opencode-ai/sdk": {
+      "optional": true
+    },
+    "@mariozechner/pi-agent-core": {
+      "optional": true
+    },
+    "@mariozechner/pi-ai": {
+      "optional": true
+    },
+    "@mariozechner/pi-coding-agent": {
       "optional": true
     }
   },
