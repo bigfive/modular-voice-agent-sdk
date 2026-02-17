@@ -204,14 +204,16 @@ export class CloudLLM implements LLMPipeline {
     }
 
     // Check for empty response (no content and no tool calls)
+    // Note: empty responses with end_turn/stop are valid - model chose not to speak
     if (!fullContent && resultToolCalls.length === 0) {
       const reason = finishReason || 'unknown';
-      throw new Error(
-        `Cloud LLM returned empty response (finish_reason: ${reason}). ` +
-        (reason === 'length'
-          ? 'The model hit the token limit before producing output. Try increasing max_completion_tokens.'
-          : 'The model did not produce any content.')
-      );
+      if (reason === 'length') {
+        throw new Error(
+          `Cloud LLM returned empty response (finish_reason: ${reason}). ` +
+          'The model hit the token limit before producing output. Try increasing max_completion_tokens.'
+        );
+      }
+      // For end_turn/stop with no content, just return empty - model chose silence
     }
 
     // Log the response

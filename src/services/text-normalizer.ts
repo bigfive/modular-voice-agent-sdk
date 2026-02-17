@@ -6,9 +6,63 @@
 import numberToWords from 'number-to-words';
 const { toWords, toWordsOrdinal } = numberToWords;
 
+/**
+ * A text replacement rule for speech normalization.
+ * Pattern can be a string (exact match) or RegExp (for complex patterns).
+ * Replacement can be a string or function (like String.replace).
+ *
+ * @example
+ * // Simple string replacement
+ * ['1:1', 'one on one']
+ *
+ * // Regex with capture groups
+ * [/PR#(\d+)/g, 'PR $1']
+ *
+ * // Function replacement
+ * [/v(\d+)\.(\d+)/g, (_, major, minor) => `version ${major} point ${minor}`]
+ *
+ * // Case-insensitive
+ * [/\bAPI\b/gi, 'A P I']
+ */
+export type TextReplacement = [
+  pattern: string | RegExp,
+  replacement: string | ((substring: string, ...args: unknown[]) => string)
+];
+
+export interface TextNormalizerConfig {
+  /** Custom text replacements applied before other normalizations */
+  replacements?: TextReplacement[];
+}
+
 export class TextNormalizer {
+  private customReplacements: TextReplacement[];
+
+  constructor(config?: TextNormalizerConfig) {
+    this.customReplacements = config?.replacements ?? [];
+  }
+
+  /**
+   * Apply custom text replacements.
+   * Runs first so replacements happen before number/symbol normalization.
+   */
+  private normalizeCustomReplacements(text: string): string {
+    let result = text;
+    for (const [pattern, replacement] of this.customReplacements) {
+      if (typeof pattern === 'string') {
+        // Escape special regex characters for literal string matching
+        const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        result = result.replace(new RegExp(escaped, 'g'), replacement as string);
+      } else {
+        // RegExp pattern - use directly
+        result = result.replace(pattern, replacement as string);
+      }
+    }
+    return result;
+  }
+
   normalize(text: string): string {
     let result = text;
+    result = this.normalizeCustomReplacements(result);
     result = this.normalizeTimes(result);
     result = this.normalizeMonthAbbreviations(result);
     result = this.normalizeDecimalNumbers(result);
