@@ -30,13 +30,11 @@ export class TransformersSTT implements STTPipeline {
     if (this.modelStore.has('stt')) {
       this.pipe = this.modelStore.get('stt');
     } else {
-      console.log(`Loading STT model (${this.config.model})...`);
       this.pipe = await pipeline('automatic-speech-recognition', this.config.model, {
         dtype: this.config.dtype as 'fp32' | 'fp16' | 'q8' | 'q4',
         device: this.config.device,
         progress_callback: onProgress,
       });
-      console.log('STT model loaded.');
       this.modelStore.set('stt', this.pipe);
     }
 

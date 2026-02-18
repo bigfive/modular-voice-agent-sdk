@@ -32,30 +32,18 @@ export class CloudLLM implements LLMPipeline {
   }
 
   async initialize(_onProgress?: ProgressCallback): Promise<void> {
-    console.log(`Initializing Cloud LLM (${this.config.baseUrl})...`);
-    console.log(`  Model: ${this.config.model}`);
-
-    // Validate the endpoint is reachable (optional health check)
+    // Optional health check - silently verify endpoint
     try {
       const modelsUrl = `${this.config.baseUrl}/models`;
-      const response = await fetch(modelsUrl, {
+      await fetch(modelsUrl, {
         method: 'GET',
         headers: this.provider.getHeaders(this.config.apiKey),
       });
-
-      if (!response.ok) {
-        // Some endpoints don't have /models, that's okay
-        console.log('  Note: /models endpoint not available (this is fine for some providers)');
-      } else {
-        console.log('  API endpoint verified.');
-      }
     } catch {
       // Connection errors are fine during init - we'll fail at generate time if needed
-      console.log('  Note: Could not verify API endpoint (will retry on first request)');
     }
 
     this.ready = true;
-    console.log('Cloud LLM ready.');
   }
 
   supportsTools(): boolean {

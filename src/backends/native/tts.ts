@@ -29,8 +29,6 @@ export class NativeTTS implements TTSPipeline {
   }
 
   async initialize(_onProgress?: ProgressCallback): Promise<void> {
-    console.log(`Initializing native TTS (${this.provider.name})...`);
-
     if (!existsSync(this.config.binaryPath)) {
       throw new Error(`sherpa-onnx-offline-tts binary not found at: ${this.config.binaryPath}`);
     }
@@ -38,11 +36,9 @@ export class NativeTTS implements TTSPipeline {
       throw new Error(`TTS model directory not found at: ${this.config.modelDir}`);
     }
 
-    // Validate model directory using provider
     this.provider.validate(this.config.modelDir);
 
     this.ready = true;
-    console.log(`Native TTS (${this.provider.name}) ready.`);
   }
 
   async synthesize(text: string): Promise<AudioPlayable> {

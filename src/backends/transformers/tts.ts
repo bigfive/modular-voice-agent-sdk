@@ -31,13 +31,11 @@ export class TransformersTTS implements TTSPipeline {
     if (this.modelStore.has('tts')) {
       this.pipe = this.modelStore.get('tts');
     } else {
-      console.log(`Loading TTS model (${this.config.model})...`);
       this.pipe = await pipeline('text-to-speech', this.config.model, {
         dtype: this.config.dtype as 'fp32' | 'fp16' | 'q8' | 'q4',
         device: this.config.device,
         progress_callback: onProgress,
       });
-      console.log('TTS model loaded.');
       this.modelStore.set('tts', this.pipe);
     }
 

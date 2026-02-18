@@ -31,9 +31,7 @@ export class AgentLLM implements LLMPipeline {
   }
 
   async initialize(_onProgress?: ProgressCallback): Promise<void> {
-    console.log('Initializing Agent LLM...');
     this.ready = true;
-    console.log('Agent LLM ready (session will be created on first message).');
   }
 
   /**
@@ -51,9 +49,7 @@ export class AgentLLM implements LLMPipeline {
 
     // Lazily create the agent session on first generate() call
     if (!this.session) {
-      console.log('Creating agent session...');
       this.session = await this.provider.createSession();
-      console.log('Agent session created.');
     }
 
     // Extract the latest user message from the conversation history.

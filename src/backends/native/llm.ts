@@ -37,8 +37,6 @@ export class NativeLLM implements LLMPipeline {
   }
 
   async initialize(_onProgress?: ProgressCallback): Promise<void> {
-    console.log('Initializing native LLM (llama-completion)...');
-
     if (!existsSync(this.config.binaryPath)) {
       throw new Error(`llama-completion binary not found at: ${this.config.binaryPath}`);
     }
@@ -47,7 +45,6 @@ export class NativeLLM implements LLMPipeline {
     }
 
     this.ready = true;
-    console.log(`Native LLM ready. Model: ${this.config.modelPath}`);
   }
 
   supportsTools(): boolean {
