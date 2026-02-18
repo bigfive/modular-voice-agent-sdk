@@ -111,5 +111,5 @@ setupAllControls({ client, elements, messages });
 console.log('Mode:', client.getMode()); // 'remote'
 console.log('Local components:', client.getLocalComponents()); // { stt: false, llm: false, tts: true }
 
-client.connect();
+await client.connect();
 

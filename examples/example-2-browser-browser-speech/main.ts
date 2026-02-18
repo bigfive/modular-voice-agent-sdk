@@ -123,4 +123,4 @@ setupAllControls({ client, elements, messages });
 console.log('Mode:', client.getMode());
 console.log('Local components:', client.getLocalComponents());
 
-client.connect(); // No server connection - just initializes local components
+await client.connect(); // No server connection - just initializes local components

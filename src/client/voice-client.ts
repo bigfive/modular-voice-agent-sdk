@@ -180,6 +180,13 @@ export interface VoiceClientConfig {
    * Reconnect delay in ms (default: 2000)
    */
   reconnectDelay?: number;
+
+  /**
+   * Timeout in ms for connect() to wait for full session initialization (default: 10000).
+   * connect() waits for the server to send session_init before resolving.
+   * Set to 0 to disable (resolve as soon as transport connects, like pre-v2 behavior).
+   */
+  connectTimeout?: number;
 }
 
 export interface ToolCallInfo {
@@ -310,6 +317,7 @@ export class VoiceClient {
     sampleRate: number;
     autoReconnect: boolean;
     reconnectDelay: number;
+    connectTimeout: number;
     serverUrl?: string;
     systemPrompt: string;
   };
@@ -403,6 +411,7 @@ export class VoiceClient {
       sampleRate: config.sampleRate ?? 16000,
       autoReconnect: config.autoReconnect ?? true,
       reconnectDelay: config.reconnectDelay ?? 2000,
+      connectTimeout: config.connectTimeout ?? 10000,
       serverUrl: components.serverUrl,
       systemPrompt: components.systemPrompt ?? '',
     };
@@ -566,6 +575,10 @@ export class VoiceClient {
 
     this.setStatus('connecting');
 
+    const sessionReady = this.config.connectTimeout > 0
+      ? this.waitForSessionInit()
+      : null;
+
     // Register handlers before connecting
     this.transport.onMessage((envelope) => {
       this.handleServerEnvelope(envelope);
@@ -585,6 +598,50 @@ export class VoiceClient {
     });
 
     await this.transport.connect();
+
+    if (sessionReady) {
+      await sessionReady;
+    }
+  }
+
+  /**
+   * Returns a promise that resolves when status becomes 'ready' (i.e. session_init received),
+   * or rejects on timeout / transport close.
+   */
+  private waitForSessionInit(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (this.status === 'ready' && this.sessionId !== null) {
+        resolve();
+        return;
+      }
+
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let statusCb: VoiceClientEvents['status'] | null = null;
+
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        if (statusCb) this.off('status', statusCb);
+      };
+
+      statusCb = (status: VoiceClientStatus) => {
+        if (status === 'ready') {
+          cleanup();
+          resolve();
+        } else if (status === 'disconnected') {
+          cleanup();
+          reject(new Error('Transport closed before session was initialized'));
+        }
+      };
+      this.on('status', statusCb);
+
+      timer = setTimeout(() => {
+        timer = null;
+        cleanup();
+        reject(new Error(
+          `Connection timed out after ${this.config.connectTimeout}ms waiting for session initialization`
+        ));
+      }, this.config.connectTimeout);
+    });
   }
 
   /**
@@ -855,13 +912,14 @@ export class VoiceClient {
   }
 
   /**
-   * Check if ready for interaction
+   * Check if ready for interaction.
+   * In server/hybrid mode, this requires both an open transport AND a valid session.
    */
   isReady(): boolean {
     if (this.mode === 'local') {
       return this.localPipeline?.isReady() ?? false;
     }
-    return this.transport?.readyState === 'open';
+    return this.transport?.readyState === 'open' && this.sessionId !== null;
   }
 
   /**

@@ -79,4 +79,4 @@ setupAllControls({ client, elements, messages });
 console.log('Mode:', client.getMode());
 console.log('Local components:', client.getLocalComponents());
 
-client.connect();
+await client.connect();
