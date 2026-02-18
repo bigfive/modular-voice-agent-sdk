@@ -41,6 +41,7 @@ export {
   type SessionInitMessage,
   type AudioMessage,
   type EndAudioMessage,
+  type RecordingStartMessage,
   type ClearHistoryMessage,
   type TextMessage,
   type TranscriptMessage,

@@ -13,7 +13,10 @@ import type { Message } from '../types';
 import { float32ToBase64Node, base64ToFloat32Node, concatFloat32Arrays } from './encoding';
 
 export interface PipelineHandlerConfig {
-  // Config options can be added here in the future
+  /** Silence timeout: no audio for this many ms = stream interrupted (default: 5000) */
+  silenceTimeoutMs?: number;
+  /** Max recording duration in ms (default: 90000) */
+  maxRecordingMs?: number;
 }
 
 /**
@@ -23,6 +26,11 @@ interface ClientCapabilities {
   hasSTT: boolean;  // Client does STT - server won't send transcript
   hasTTS: boolean;  // Client does TTS - server won't send audio
 }
+
+type BusyState = 'idle' | 'recording' | 'processing';
+
+const DEFAULT_SILENCE_TIMEOUT_MS = 5000;
+const DEFAULT_MAX_RECORDING_MS = 90000;
 
 /**
  * A session represents a single client connection.
@@ -46,24 +54,37 @@ export class PipelineSession {
   /** Current request being processed */
   private _currentRequestId: string | null = null;
 
+  /** Busy state for recording/processing */
+  private busyState: BusyState = 'idle';
+  private recordingStarted = false;
+  private recordingStartedAt: number | null = null;
+  private lastAudioAt: number | null = null;
+  private busyTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  private readonly silenceTimeoutMs: number;
+  private readonly maxRecordingMs: number;
+  private readonly onIdleCallbacks = new Set<() => void>();
+
   /** Private constructor - use PipelineSession.create() */
   private constructor(
     private pipeline: VoicePipeline,
-    private backends: SessionBackends
+    private backends: SessionBackends,
+    config: PipelineHandlerConfig = {}
   ) {
     // Generate unique session ID
     this._sessionId = generateId('ses');
     // Initialize history with system prompt
     this.history = [{ role: 'system', content: this.pipeline.getSystemPrompt() }];
+    this.silenceTimeoutMs = config.silenceTimeoutMs ?? DEFAULT_SILENCE_TIMEOUT_MS;
+    this.maxRecordingMs = config.maxRecordingMs ?? DEFAULT_MAX_RECORDING_MS;
   }
 
   /**
    * Create a new session with its own backend instances.
    * Each session gets fresh backends for proper isolation.
    */
-  static async create(pipeline: VoicePipeline): Promise<PipelineSession> {
+  static async create(pipeline: VoicePipeline, config: PipelineHandlerConfig = {}): Promise<PipelineSession> {
     const backends = await pipeline.createSessionBackends();
-    return new PipelineSession(pipeline, backends);
+    return new PipelineSession(pipeline, backends, config);
   }
 
   /**
@@ -90,23 +111,133 @@ export class PipelineSession {
         };
         break;
 
+      case 'recording_start':
+        this.enterRecordingState();
+        break;
+
       case 'audio':
+        if (!this.recordingStarted) {
+          yield { type: 'error', message: 'Protocol violation: audio received without recording_start' };
+          break;
+        }
         this.audioChunks.push(base64ToFloat32Node(message.data));
+        this.lastAudioAt = Date.now();
+        this.scheduleBusyTimeout();
         break;
 
       case 'end_audio':
-        yield* this.processAudio();
+        this.clearBusyTimeout();
+        this.recordingStarted = false;
+        this.busyState = 'processing';
+        try {
+          yield* this.processAudio();
+        } finally {
+          this.setIdle();
+        }
         break;
 
       case 'text':
         // Client did STT locally - process text directly
-        yield* this.processText(message.text);
+        this.busyState = 'processing';
+        try {
+          yield* this.processText(message.text);
+        } finally {
+          this.setIdle();
+        }
         break;
 
       case 'clear_history':
         // Reset session history
         this.history = [{ role: 'system', content: this.pipeline.getSystemPrompt() }];
         break;
+    }
+  }
+
+  private enterRecordingState(): void {
+    this.recordingStarted = true;
+    this.recordingStartedAt = Date.now();
+    this.lastAudioAt = Date.now();
+    this.busyState = 'recording';
+    this.scheduleBusyTimeout();
+  }
+
+  private scheduleBusyTimeout(): void {
+    this.clearBusyTimeout();
+    const elapsed = this.recordingStartedAt ? Date.now() - this.recordingStartedAt : 0;
+    const remainingMax = Math.max(0, this.maxRecordingMs - elapsed);
+    const silenceElapsed = this.lastAudioAt ? Date.now() - this.lastAudioAt : 0;
+    const remainingSilence = Math.max(0, this.silenceTimeoutMs - silenceElapsed);
+    const timeoutMs = Math.min(remainingMax, remainingSilence);
+    this.busyTimeoutHandle = setTimeout(() => this.forceEndRecording(), timeoutMs);
+  }
+
+  private clearBusyTimeout(): void {
+    if (this.busyTimeoutHandle) {
+      clearTimeout(this.busyTimeoutHandle);
+      this.busyTimeoutHandle = null;
+    }
+  }
+
+  private forceEndRecording(): void {
+    this.clearBusyTimeout();
+    if (this.audioChunks.length > 0) {
+      console.warn('[PipelineSession] Recording timeout: discarding partial audio');
+    }
+    this.audioChunks = [];
+    this.recordingStarted = false;
+    this.recordingStartedAt = null;
+    this.lastAudioAt = null;
+    this.busyState = 'idle';
+    this.fireIdleCallbacks();
+  }
+
+  private setIdle(): void {
+    this.busyState = 'idle';
+    this.fireIdleCallbacks();
+  }
+
+  private fireIdleCallbacks(): void {
+    for (const cb of this.onIdleCallbacks) {
+      try {
+        cb();
+      } catch (err) {
+        console.error('[PipelineSession] onIdle callback error:', err);
+      }
+    }
+  }
+
+  /**
+   * True while receiving audio, processing a turn, or waiting for pipeline.
+   */
+  isBusy(): boolean {
+    return this.busyState !== 'idle';
+  }
+
+  /**
+   * Subscribe to idle transitions. Called when a turn completes (recording→processing→idle).
+   * Returns unsubscribe function.
+   */
+  onIdle(callback: () => void): () => void {
+    this.onIdleCallbacks.add(callback);
+    return () => this.onIdleCallbacks.delete(callback);
+  }
+
+  /**
+   * Inject a text message from the server. Runs through pipeline (LLM → TTS).
+   * Yields ServerMessage — caller must iterate and send to client (e.g. WebSocket).
+   *
+   * @throws Error if session is busy (check isBusy() first, or queue externally)
+   */
+  async *injectFromServer(text: string): AsyncGenerator<ServerMessage> {
+    if (this.destroyed) return;
+    if (this.isBusy()) {
+      throw new Error('Session is busy');
+    }
+    this.busyState = 'processing';
+    try {
+      yield* this.processText(text);
+    } finally {
+      this.setIdle();
     }
   }
 
@@ -333,6 +464,10 @@ export class PipelineSession {
   destroy(): void {
     this.destroyed = true;
     this.audioChunks = [];
+    this.clearBusyTimeout();
+    this.recordingStarted = false;
+    this.busyState = 'idle';
+    this.onIdleCallbacks.clear();
     // Wake up any waiting promise so runPipeline can exit its loop
     if (this.destroyedResolve) {
       this.destroyedResolve();
@@ -347,17 +482,15 @@ export class PipelineSession {
 export class PipelineHandler {
   constructor(
     private pipeline: VoicePipeline,
-    _config: PipelineHandlerConfig = {}
-  ) {
-    // Config reserved for future options
-  }
+    private config: PipelineHandlerConfig = {}
+  ) {}
 
   /**
    * Create a new session for a client connection.
    * Each session gets its own backend instances for isolation.
    */
   async createSession(): Promise<PipelineSession> {
-    return PipelineSession.create(this.pipeline);
+    return PipelineSession.create(this.pipeline, this.config);
   }
 
   /**

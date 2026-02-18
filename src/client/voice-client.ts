@@ -690,6 +690,7 @@ export class VoiceClient {
     } else if (this.recorder) {
       // Use audio recorder for server STT
       await this.recorder.start();
+      this.send({ type: 'recording_start' });
     }
 
     this.setStatus('listening');

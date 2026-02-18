@@ -56,6 +56,10 @@ export type EndAudioMessage = {
   type: 'end_audio';
 };
 
+export type RecordingStartMessage = {
+  type: 'recording_start';
+};
+
 export type ClearHistoryMessage = {
   type: 'clear_history';
 };
@@ -78,7 +82,13 @@ export type CapabilitiesMessage = {
   hasTTS: boolean;  // Client does TTS locally
 };
 
-export type ClientMessage = AudioMessage | EndAudioMessage | ClearHistoryMessage | TextMessage | CapabilitiesMessage;
+export type ClientMessage =
+  | AudioMessage
+  | EndAudioMessage
+  | RecordingStartMessage
+  | ClearHistoryMessage
+  | TextMessage
+  | CapabilitiesMessage;
 
 // ============ Server → Client ============
 
