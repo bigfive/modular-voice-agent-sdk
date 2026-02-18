@@ -25,6 +25,7 @@ export interface PipelineHandlerConfig {
 interface ClientCapabilities {
   hasSTT: boolean;  // Client does STT - server won't send transcript
   hasTTS: boolean;  // Client does TTS - server won't send audio
+  wantsTTS?: boolean;  // When false, server skips TTS. Default true.
 }
 
 type BusyState = 'idle' | 'recording' | 'processing';
@@ -108,6 +109,7 @@ export class PipelineSession {
         this.capabilities = {
           hasSTT: message.hasSTT,
           hasTTS: message.hasTTS,
+          wantsTTS: message.wantsTTS ?? true,
         };
         break;
 
@@ -382,7 +384,10 @@ export class PipelineSession {
     };
 
     // Determine what to skip based on client capabilities
-    const skipTTS = this.capabilities.hasTTS || !this.pipeline.hasTTS();
+    const skipTTS =
+      this.capabilities.hasTTS ||
+      this.capabilities.wantsTTS === false ||
+      !this.pipeline.hasTTS();
 
     // Start pipeline processing
     const pipelinePromise = run({

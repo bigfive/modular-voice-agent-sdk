@@ -80,6 +80,8 @@ export type CapabilitiesMessage = {
   type: 'capabilities';
   hasSTT: boolean;  // Client does STT locally
   hasTTS: boolean;  // Client does TTS locally
+  /** When false, server skips TTS (text-only responses). Omitted/undefined defaults to true. */
+  wantsTTS?: boolean;
 };
 
 export type ClientMessage =

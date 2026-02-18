@@ -365,6 +365,8 @@ export class VoiceClient {
   // Tracks whether server has sent 'complete' message (for server TTS timing)
   private responseComplete = true;
 
+  /** When false, server skips TTS. Default true. */
+  private wantsTTS = true;
 
   constructor(config: VoiceClientConfig) {
     // Get components from factory, passing modelStore for caching
@@ -924,6 +926,23 @@ export class VoiceClient {
   }
 
   /**
+   * Set whether client wants server to send TTS audio.
+   * When false, server skips TTS (text-only responses). Sends updated capabilities if connected.
+   */
+  setWantsTTS(value: boolean): void {
+    if (this.wantsTTS === value) return;
+    this.wantsTTS = value;
+    this.sendCapabilities();
+  }
+
+  /**
+   * Whether client wants server to send TTS audio.
+   */
+  getWantsTTS(): boolean {
+    return this.wantsTTS;
+  }
+
+  /**
    * Check if currently recording
    */
   isRecording(): boolean {
@@ -1076,6 +1095,21 @@ export class VoiceClient {
     }
   }
 
+  private sendCapabilities(): void {
+    if (this.transport?.readyState !== 'open' || !this.sessionId) return;
+    const envelope: ClientEnvelope = {
+      sessionId: this.sessionId,
+      requestId: generateId('req'),
+      message: {
+        type: 'capabilities',
+        hasSTT: this.localSTT !== null,
+        hasTTS: this.localTTS !== null,
+        wantsTTS: this.wantsTTS,
+      },
+    };
+    this.transport.send(envelope);
+  }
+
   private handleServerEnvelope(envelope: ServerEnvelope): void {
     const { message: msg, requestId, responseId } = envelope;
     const meta: EventMeta = { requestId: requestId ?? '', responseId };
@@ -1084,13 +1118,7 @@ export class VoiceClient {
       case 'session_init':
         // Store session ID and send capabilities
         this.sessionId = msg.sessionId;
-        // Generate a requestId for the capabilities message
-        this.currentRequestId = generateId('req');
-        this.send({
-          type: 'capabilities',
-          hasSTT: this.localSTT !== null,
-          hasTTS: this.localTTS !== null,
-        });
+        this.sendCapabilities();
         this.setStatus('ready');
         break;
 
