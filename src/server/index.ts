@@ -53,7 +53,7 @@ export {
 } from '../client/protocol';
 
 // Server-side encoding utilities (use Buffer for efficiency in Node.js)
-export { float32ToBase64Node, base64ToFloat32Node } from './encoding';
+export { encodeWav, float32ToBase64Node, base64ToFloat32Node } from './encoding';
 
 // Re-export Message type for history get/set
 export type { Message } from '../types';

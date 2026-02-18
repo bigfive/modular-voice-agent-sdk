@@ -13,6 +13,8 @@ import { tmpdir } from 'os';
 import type { TTSPipeline, SherpaOnnxTTSConfig, ProgressCallback, AudioResult, AudioPlayable } from '../../types';
 import { BufferedAudioPlayable } from '../../types';
 import { TTSModelProvider, PiperTTSProvider } from './tts-providers';
+import { getBinaryPath } from '../../cache';
+import { encodeWav } from '../../server/encoding';
 
 export class NativeTTS implements TTSPipeline {
   private config: SherpaOnnxTTSConfig;
@@ -103,4 +105,53 @@ export class NativeTTS implements TTSPipeline {
   isReady(): boolean {
     return this.ready;
   }
+}
+
+export interface SynthesizeToWavOptions {
+  modelDir: string;
+  speakerId?: number;
+  provider?: TTSModelProvider;
+  /** Defaults to getBinaryPath('sherpa-onnx-offline-tts') */
+  binaryPath?: string;
+  speedScale?: number;
+  numThreads?: number;
+}
+
+/**
+ * One-shot TTS: synthesize text directly to a WAV Buffer.
+ * Handles NativeTTS setup, synthesis, and WAV encoding in a single call.
+ *
+ * @example
+ * ```typescript
+ * import { synthesizeToWav } from 'modular-voice-agent-sdk/native';
+ * const wav = await synthesizeToWav('Hello!', { modelDir: '/path/to/model', speakerId: 3 });
+ * fs.writeFileSync('hello.wav', wav);
+ * ```
+ */
+export async function synthesizeToWav(
+  text: string,
+  options: SynthesizeToWavOptions,
+): Promise<Buffer> {
+  const binaryPath = options.binaryPath ?? getBinaryPath('sherpa-onnx-offline-tts');
+
+  const tts = new NativeTTS(
+    {
+      binaryPath,
+      modelDir: options.modelDir,
+      speakerId: options.speakerId,
+      speedScale: options.speedScale,
+      numThreads: options.numThreads,
+    },
+    options.provider,
+  );
+
+  await tts.initialize();
+  const playable = await tts.synthesize(text);
+  const raw = playable.getRawAudio();
+
+  if (!raw) {
+    throw new Error('TTS synthesis produced no audio');
+  }
+
+  return encodeWav(raw.audio, raw.sampleRate);
 }

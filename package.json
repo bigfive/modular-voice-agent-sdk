@@ -30,6 +30,10 @@
     "./agent": {
       "import": "./dist/backends/agent/index.js",
       "types": "./dist/backends/agent/index.d.ts"
+    },
+    "./setup": {
+      "import": "./dist/setup.js",
+      "types": "./dist/setup.d.ts"
     }
   },
   "bin": {

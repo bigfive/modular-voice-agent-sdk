@@ -1,6 +1,7 @@
 export { NativeSTT } from './stt';
 export { NativeLLM } from './llm';
-export { NativeTTS } from './tts';
+export { NativeTTS, synthesizeToWav } from './tts';
+export type { SynthesizeToWavOptions } from './tts';
 export type { TTSModelProvider } from './tts-providers';
 export { PiperTTSProvider, KokoroTTSProvider } from './tts-providers';
 
@@ -12,5 +13,8 @@ export {
   getModelPath,
   getBinaryPath,
   defaultBinaries,
+  getCacheStatus,
+  checkModelsInstalled,
 } from '../../cache';
+export type { ModelConfig, SetupConfig, ModelStatus } from '../../cache';
 
