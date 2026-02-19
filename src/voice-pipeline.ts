@@ -358,7 +358,7 @@ export class VoicePipeline {
     backends?: SessionBackends
   ): Promise<Message[]> {
     const llm = backends?.llm ?? this.components?.llm;
-    const tts = backends?.tts ?? this.components?.tts ?? null;
+    const tts = (backends && 'tts' in backends) ? backends.tts : (this.components?.tts ?? null);
 
     if (!llm) {
       callbacks.onError(new Error('Pipeline not initialized. Call initialize() first.'));
@@ -404,7 +404,7 @@ export class VoicePipeline {
   ): Promise<Message[]> {
     const stt = backends?.stt ?? this.components?.stt;
     const llm = backends?.llm ?? this.components?.llm;
-    const tts = backends?.tts ?? this.components?.tts ?? null;
+    const tts = (backends && 'tts' in backends) ? backends.tts : (this.components?.tts ?? null);
 
     if (!this.components?.stt && !backends?.stt) {
       callbacks.onError(new Error('No STT backend configured. Use processText() instead.'));

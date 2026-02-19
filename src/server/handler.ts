@@ -334,6 +334,17 @@ export class PipelineSession {
   }
 
   /**
+   * Backends for current turn. When skipTTS, passes tts: null so pipeline skips TTS entirely.
+   */
+  private getBackendsForTurn(): SessionBackends {
+    const skipTTS =
+      this.capabilities.hasTTS ||
+      this.capabilities.wantsTTS === false ||
+      !this.pipeline.hasTTS();
+    return skipTTS ? { ...this.backends, tts: null } : this.backends;
+  }
+
+  /**
    * Process accumulated audio through the pipeline (STT → LLM → TTS)
    */
   private async *processAudio(): AsyncGenerator<ServerMessage> {
@@ -347,8 +358,9 @@ export class PipelineSession {
     const audio = concatFloat32Arrays(this.audioChunks);
     this.audioChunks = [];
 
+    const backends = this.getBackendsForTurn();
     yield* this.runPipeline((callbacks) =>
-      this.pipeline.processAudio(audio, this.getContext(), callbacks, this.backends)
+      this.pipeline.processAudio(audio, this.getContext(), callbacks, backends)
     );
   }
 
@@ -360,8 +372,9 @@ export class PipelineSession {
     // (useful for debugging, client can ignore if it already has transcript)
     yield { type: 'transcript', text };
 
+    const backends = this.getBackendsForTurn();
     yield* this.runPipeline((callbacks) =>
-      this.pipeline.processText(text, this.getContext(), callbacks, this.backends)
+      this.pipeline.processText(text, this.getContext(), callbacks, backends)
     );
   }
 
@@ -383,11 +396,8 @@ export class PipelineSession {
       }
     };
 
-    // Determine what to skip based on client capabilities
-    const skipTTS =
-      this.capabilities.hasTTS ||
-      this.capabilities.wantsTTS === false ||
-      !this.pipeline.hasTTS();
+    // Defense in depth: skip audio if TTS was disabled for this turn
+    const skipTTS = this.getBackendsForTurn().tts === null;
 
     // Start pipeline processing
     const pipelinePromise = run({
