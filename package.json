@@ -1,6 +1,6 @@
 {
   "name": "modular-voice-agent-sdk",
-  "version": "2.9.1",
+  "version": "2.9.2",
   "description": "Modular isomorphic STT → LLM → TTS pipeline library for AI voice agents and voice assistants",
   "type": "module",
   "main": "./dist/index.js",
@@ -41,12 +41,13 @@
   },
   "files": [
     "dist",
-    "scripts",
+    "scripts/setup-binaries.sh",
+    "scripts/setup.sh",
     "README.md",
     "USAGE.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/fix-esm-imports.mjs",
     "dev": "tsc -p tsconfig.build.json --watch",
     "prepublishOnly": "npm run build"
   },
