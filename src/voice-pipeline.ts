@@ -654,7 +654,7 @@ export class VoicePipeline {
   ): Promise<{ content: string; toolCalls?: ToolCall[] }> {
     const tools = this.toolDefinitions.length > 0 ? this.toolDefinitions : undefined;
     let sentenceBuffer = '';
-    const sentenceEnders = /[.!?]/;
+    const sentenceEnders = /\.(?=\s)|[!?]/;
     const playableQueue = new Map<number, AudioPlayable>();
     let nextSentenceIndex = 0;
     let nextToSend = 0;

@@ -1,6 +1,6 @@
 {
   "name": "modular-voice-agent-sdk",
-  "version": "2.9.2",
+  "version": "2.9.3",
   "description": "Modular isomorphic STT → LLM → TTS pipeline library for AI voice agents and voice assistants",
   "type": "module",
   "main": "./dist/index.js",
