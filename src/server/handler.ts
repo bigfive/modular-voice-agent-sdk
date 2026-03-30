@@ -65,6 +65,9 @@ export class PipelineSession {
   private readonly maxRecordingMs: number;
   private readonly onIdleCallbacks = new Set<() => void>();
 
+  /** Per-request TTS suppression (set when client sends skipTTS on text message) */
+  private currentSkipTTS = false;
+
   /** Private constructor - use PipelineSession.create() */
   private constructor(
     private pipeline: VoicePipeline,
@@ -140,10 +143,12 @@ export class PipelineSession {
 
       case 'text':
         // Client did STT locally - process text directly
+        this.currentSkipTTS = message.skipTTS ?? false;
         this.busyState = 'processing';
         try {
           yield* this.processText(message.text);
         } finally {
+          this.currentSkipTTS = false;
           this.setIdle();
         }
         break;
@@ -334,14 +339,22 @@ export class PipelineSession {
   }
 
   /**
-   * Backends for current turn. When skipTTS, passes tts: null so pipeline skips TTS entirely.
-   */
+    * Backends for current turn. When skipServerTTS, passes tts: null so pipeline skips TTS.
+    */
   private getBackendsForTurn(): SessionBackends {
-    const skipTTS =
+    const skipServerTTS =
       this.capabilities.hasTTS ||
       this.capabilities.wantsTTS === false ||
+      this.currentSkipTTS ||
       !this.pipeline.hasTTS();
-    return skipTTS ? { ...this.backends, tts: null } : this.backends;
+    return skipServerTTS ? { ...this.backends, tts: null } : this.backends;
+  }
+
+  /**
+    * Whether TTS should be suppressed entirely (neither server nor client should speak).
+    */
+  private suppressAllTTS(): boolean {
+    return this.capabilities.wantsTTS === false || this.currentSkipTTS;
   }
 
   /**
@@ -396,16 +409,19 @@ export class PipelineSession {
       }
     };
 
-    // Defense in depth: skip audio if TTS was disabled for this turn
-    const skipTTS = this.getBackendsForTurn().tts === null;
+    // Defense in depth: skip audio if server TTS was disabled for this turn
+    const serverSkipsTTS = this.getBackendsForTurn().tts === null;
+
+    // Signal to client whether TTS should be fully suppressed
+    const suppressTTS = this.suppressAllTTS();
 
     // Start pipeline processing
     const pipelinePromise = run({
       onTranscript: (text) => enqueue({ type: 'transcript', text }),
-      onResponseChunk: (text) => enqueue({ type: 'response_chunk', text }),
+      onResponseChunk: (text) => enqueue({ type: 'response_chunk', text, skipTTS: suppressTTS || undefined }),
       onAudio: (playable) => {
         // Skip audio if client handles TTS locally
-        if (skipTTS) return;
+        if (serverSkipsTTS) return;
 
         const raw = playable.getRawAudio();
         if (!raw) {

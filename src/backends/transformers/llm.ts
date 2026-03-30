@@ -44,9 +44,11 @@ export class TransformersLLM implements LLMPipeline {
   }
 
   async initialize(onProgress?: ProgressCallback): Promise<void> {
+    console.log('[LLM] initialize called, modelStore.has("llm"):', this.modelStore.has('llm'));
     if (this.modelStore.has('llm')) {
       this.pipe = this.modelStore.get('llm');
     } else {
+      console.log('[LLM] Creating new pipeline for', this.config.model);
       this.pipe = await pipeline('text-generation', this.config.model, {
         dtype: this.config.dtype as 'fp32' | 'fp16' | 'q8' | 'q4',
         device: this.config.device,

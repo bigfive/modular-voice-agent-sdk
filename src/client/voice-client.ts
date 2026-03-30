@@ -365,6 +365,9 @@ export class VoiceClient {
   // Tracks whether server has sent 'complete' message (for server TTS timing)
   private responseComplete = true;
 
+  /** Tracks whether server signaled TTS was skipped for current response. */
+  private lastSkipTTS = false;
+
   /** When false, server skips TTS. Default true. */
   private wantsTTS = true;
 
@@ -516,6 +519,30 @@ export class VoiceClient {
   // ============ Public API ============
 
   /**
+   * Send a text message through the voice pipeline (bypasses STT).
+   * For typed input that shouldn't trigger TTS (user can read the response).
+   */
+  sendText(text: string): void {
+    if (this.status !== 'ready' && this.status !== 'speaking') return;
+    if (!text.trim()) return;
+
+    this.currentRequestId = generateId('req');
+    this.responseComplete = false;
+    this.currentResponse = '';
+
+    this.stopSpeaking();
+
+    this.emit('transcript', text.trim(), createLocalMeta(this.currentRequestId));
+
+    if (this.mode === 'local' || (this.mode === 'hybrid' && this.localLLM)) {
+      void this.processTextLocally(text, { skipTTS: true });
+    } else {
+      this.send({ type: 'text', text, skipTTS: true });
+      this.setStatus('processing');
+    }
+  }
+
+  /**
    * Initialize and connect (if using server)
    */
   async connect(): Promise<void> {
@@ -542,30 +569,29 @@ export class VoiceClient {
       });
     };
 
+    // If fully local mode, use localPipeline to initialize everything
+    if (this.localPipeline) {
+      await this.localPipeline.initialize(progressCallback);
+      return;
+    }
+
+    // Otherwise initialize components directly (hybrid or remote mode)
     const promises: Promise<void>[] = [];
 
-    // Initialize STT (if not WebSpeechSTT)
     if (this.localSTT && !isWebSpeechSTT(this.localSTT)) {
       promises.push(this.localSTT.initialize(progressCallback));
     }
 
-    // Initialize LLM
     if (this.localLLM) {
       promises.push(this.localLLM.initialize(progressCallback));
     }
 
-    // Initialize TTS (WebSpeechTTS needs initialize too)
     if (this.localTTS) {
       if (isWebSpeechTTS(this.localTTS)) {
         promises.push(this.localTTS.initialize());
       } else {
         promises.push(this.localTTS.initialize(progressCallback));
       }
-    }
-
-    // Initialize local pipeline if exists
-    if (this.localPipeline) {
-      promises.push(this.localPipeline.initialize(progressCallback));
     }
 
     await Promise.all(promises);
@@ -767,7 +793,7 @@ export class VoiceClient {
 
       if (this.mode === 'local' || (this.mode === 'hybrid' && this.localLLM)) {
         // Process locally
-        await this.processTextLocally(transcript);
+        await this.processTextLocally(transcript, { skipTTS: !this.wantsTTS });
       } else {
         // Send to server
         this.send({ type: 'text', text: transcript });
@@ -778,19 +804,17 @@ export class VoiceClient {
     }
   }
 
-  private async processTextLocally(text: string): Promise<void> {
+  private async processTextLocally(text: string, options?: { skipTTS?: boolean }): Promise<void> {
     this.currentResponse = '';
 
     if (this.localPipeline) {
-      // Fully local with pipeline
-      await this.runLocalPipeline(text);
+      await this.runLocalPipeline(text, options?.skipTTS);
     } else if (this.localLLM) {
-      // Hybrid: local LLM, possibly local TTS
-      await this.runLocalLLM(text);
+      await this.runLocalLLM(text, options?.skipTTS);
     }
   }
 
-  private async runLocalPipeline(text: string): Promise<void> {
+  private async runLocalPipeline(text: string, skipTTS?: boolean): Promise<void> {
     if (!this.localPipeline) return;
     const meta = createLocalMeta(this.currentRequestId);
 
@@ -809,14 +833,12 @@ export class VoiceClient {
         this.currentResponse += chunk;
         this.emit('responseChunk', chunk, meta);
 
-        // If using WebSpeechTTS separately, queue text
-        if (isWebSpeechTTS(this.localTTS)) {
+        if (isWebSpeechTTS(this.localTTS) && !skipTTS) {
           this.handleLocalTTSChunk(chunk);
         }
       },
       onAudio: async (playable: AudioPlayable) => {
-        // If not using WebSpeechTTS, play the audio from pipeline
-        if (!isWebSpeechTTS(this.localTTS)) {
+        if (!isWebSpeechTTS(this.localTTS) && !skipTTS) {
           this.setStatus('speaking');
           await playable.play();
         }
@@ -824,7 +846,7 @@ export class VoiceClient {
       onComplete: () => {
         this.emit('responseComplete', this.currentResponse, meta);
 
-        if (isWebSpeechTTS(this.localTTS)) {
+        if (isWebSpeechTTS(this.localTTS) && !skipTTS) {
           this.flushLocalTTS();
         } else {
           this.setStatus('ready');
@@ -836,11 +858,11 @@ export class VoiceClient {
       },
     };
 
-    // processText mutates context.history with new messages
-    await this.localPipeline.processText(text, context, callbacks);
+    const backends = skipTTS ? { stt: null, llm: this.localLLM!, tts: null } : undefined;
+    await this.localPipeline.processText(text, context, callbacks, backends);
   }
 
-  private async runLocalLLM(text: string): Promise<void> {
+  private async runLocalLLM(text: string, skipTTS?: boolean): Promise<void> {
     if (!this.localLLM) return;
     const meta = createLocalMeta(this.currentRequestId);
 
@@ -858,14 +880,8 @@ export class VoiceClient {
           this.currentResponse += token;
           this.emit('responseChunk', token, meta);
 
-          if (isWebSpeechTTS(this.localTTS)) {
+          if (isWebSpeechTTS(this.localTTS) && !skipTTS) {
             this.handleLocalTTSChunk(token);
-          } else if (this.localTTS) {
-            // For TTSPipeline, we'd need sentence-level TTS
-            // This is simplified - in practice you'd want sentence buffering
-          } else {
-            // Server TTS - send text
-            // Server should handle this based on capabilities
           }
         },
       });
@@ -875,10 +891,8 @@ export class VoiceClient {
 
       this.emit('responseComplete', result.content, meta);
 
-      if (isWebSpeechTTS(this.localTTS)) {
+      if (isWebSpeechTTS(this.localTTS) && !skipTTS) {
         await this.flushLocalTTS();
-      } else if (!this.localTTS && this.needsServer) {
-        // Wait for server TTS
       } else {
         this.setStatus('ready');
       }
@@ -1138,10 +1152,11 @@ export class VoiceClient {
           this.responseComplete = false;
         }
         this.currentResponse += msg.text;
+        this.lastSkipTTS = msg.skipTTS ?? false;
         this.emit('responseChunk', msg.text, meta);
 
-        // If using local TTS, queue text for speech
-        if (this.localTTS) {
+        // If using local TTS, queue text for speech (unless server signaled TTS was skipped)
+        if (this.localTTS && !msg.skipTTS) {
           this.handleLocalTTSChunk(msg.text);
         }
         break;
@@ -1170,9 +1185,10 @@ export class VoiceClient {
         this.responseComplete = true;
         this.emit('responseComplete', this.currentResponse, meta);
 
-        if (this.localTTS) {
-          // Flush any remaining TTS text
+        if (this.localTTS && !this.lastSkipTTS) {
           this.flushLocalTTS();
+        } else if (this.localTTS) {
+          this.setStatus('ready');
         } else if (this.player) {
           // If audio already finished, go to ready now
           // Otherwise, onEnd callback will handle it
@@ -1182,10 +1198,12 @@ export class VoiceClient {
         } else {
           this.setStatus('ready');
         }
+        this.lastSkipTTS = false;
         break;
 
       case 'error':
         this.emit('error', new Error(msg.message), meta);
+        this.lastSkipTTS = false;
         this.setStatus('ready');
         break;
     }

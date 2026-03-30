@@ -71,6 +71,8 @@ export type ClearHistoryMessage = {
 export type TextMessage = {
   type: 'text';
   text: string;
+  /** When true, skip TTS for this turn (typed input). Server echoes in response_chunk. */
+  skipTTS?: boolean;
 };
 
 /**
@@ -111,6 +113,8 @@ export type TranscriptMessage = {
 export type ResponseChunkMessage = {
   type: 'response_chunk';
   text: string;
+  /** When true, TTS was skipped for this turn. Client should not speak locally. */
+  skipTTS?: boolean;
 };
 
 export type AudioResponseMessage = {
