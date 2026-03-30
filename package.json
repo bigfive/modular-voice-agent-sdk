@@ -34,6 +34,10 @@
     "./setup": {
       "import": "./dist/setup.js",
       "types": "./dist/setup.d.ts"
+    },
+    "./ui": {
+      "import": "./dist/ui/index.js",
+      "types": "./dist/ui/index.d.ts"
     }
   },
   "bin": {
@@ -41,6 +45,7 @@
   },
   "files": [
     "dist",
+    "dist/ui/styles.css",
     "scripts/setup-binaries.sh",
     "scripts/setup.sh",
     "README.md",
