@@ -1,8 +1,22 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
+const sdkRoot = resolve(__dirname, '..');
+
 export default defineConfig({
   root: __dirname,
+  resolve: {
+    alias: {
+      'modular-voice-agent-sdk/native': resolve(sdkRoot, 'src/backends/native/index.ts'),
+      'modular-voice-agent-sdk/cloud': resolve(sdkRoot, 'src/backends/cloud/index.ts'),
+      'modular-voice-agent-sdk/client': resolve(sdkRoot, 'src/client/index.ts'),
+      'modular-voice-agent-sdk/server': resolve(sdkRoot, 'src/server/index.ts'),
+      'modular-voice-agent-sdk/agent': resolve(sdkRoot, 'src/backends/agent/index.ts'),
+      'modular-voice-agent-sdk/setup': resolve(sdkRoot, 'src/setup.ts'),
+      'modular-voice-agent-sdk/ui': resolve(sdkRoot, 'src/ui/index.ts'),
+      'modular-voice-agent-sdk': sdkRoot,
+    },
+  },
   server: {
     port: 5173,
   },

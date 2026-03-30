@@ -2,20 +2,17 @@
  * UI Components Demo
  */
 
-import { VoiceClient, createVoiceClient, WebSpeechSTT, WebSpeechTTS } from 'modular-voice-agent-sdk/client';
+import { createVoiceClient, WebSpeechTTS } from 'modular-voice-agent-sdk/client';
 import { TransformersLLM } from 'modular-voice-agent-sdk';
-import { ChatRenderer, type ContentBlock } from '../../src/ui';
-
-const support = VoiceClient.getBrowserSupport();
-
-if (!support.webSpeechSTTUsable) {
-  document.body.innerHTML = '<div style="max-width:600px;margin:50px auto;padding:20px;font-family:system-ui;text-align:center;"><h1>Browser Not Supported</h1><p>This example requires Chrome, Edge, or Safari.</p></div>';
-  throw new Error('WebSpeech STT not supported');
-}
+import { ChatRenderer } from '../../src/ui';
+import { TransformersSTT } from 'modular-voice-agent-sdk';
 
 const client = createVoiceClient({
   create: (modelStore) => ({
-    stt: new WebSpeechSTT({ language: 'en-US' }),
+    stt: new TransformersSTT({
+      model: 'Xenova/whisper-tiny.en',
+      dtype: 'q8',
+    }, modelStore),
     llm: new TransformersLLM({
       model: 'HuggingFaceTB/SmolLM2-360M-Instruct',
       dtype: 'q4',
@@ -23,7 +20,7 @@ const client = createVoiceClient({
       temperature: 0.7,
       device: 'webgpu',
     }, modelStore),
-    tts: new WebSpeechTTS({ voiceName: 'Samantha', rate: 1.1 }),
+    tts: new WebSpeechTTS({ voiceName: 'samantha', rate: 1.1 }),
     systemPrompt: 'You are a helpful voice assistant. Keep responses brief.',
   }),
 });
@@ -32,6 +29,7 @@ const chatContainer = document.getElementById('chat-container')!;
 const statusEl = document.getElementById('status')!;
 const recordBtn = document.getElementById('recordBtn') as HTMLButtonElement;
 const clearBtn = document.getElementById('clearBtn')!;
+const textInput = document.getElementById('textInput') as HTMLInputElement;
 const toolModal = document.getElementById('tool-modal')!;
 const toolModalTitle = document.getElementById('tool-modal-title')!;
 const toolModalBody = document.getElementById('tool-modal-body')!;
@@ -69,6 +67,7 @@ client.on('status', (status) => {
   statusEl.textContent = statusMap[status] || status;
   recordBtn.disabled = status !== 'ready' && status !== 'speaking';
   recordBtn.classList.toggle('recording', status === 'listening');
+  textInput.disabled = status !== 'ready' && status !== 'speaking';
 });
 
 const activeDownloads = new Map<string, number>();
@@ -91,11 +90,17 @@ client.on('transcript', (text) => {
   renderer.startAssistantMessage();
 });
 
+let currentAssistantText = '';
+
 client.on('responseChunk', (chunk) => {
-  renderer.updateAssistantContent([{ type: 'text', text: chunk }]);
+  currentAssistantText += chunk;
+  renderer.updateAssistantContent([{ type: 'text', text: currentAssistantText }]);
 });
 
-client.on('responseComplete', () => renderer.finalizeAssistantMessage());
+client.on('responseComplete', () => {
+  currentAssistantText = '';
+  renderer.finalizeAssistantMessage();
+});
 
 client.on('error', (err) => {
   console.error('Voice client error:', err);
@@ -120,6 +125,15 @@ document.addEventListener('keyup', (e) => {
   if (e.code === 'Space' && e.target === document.body) {
     e.preventDefault();
     if (client.getStatus() === 'listening') client.stopRecording();
+  }
+});
+
+textInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.repeat) {
+    const text = textInput.value.trim();
+    if (!text) return;
+    textInput.value = '';
+    client.sendText(text);
   }
 });
 

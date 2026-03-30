@@ -62,10 +62,14 @@ export class WebSpeechTTS {
 
   private async loadVoices(): Promise<void> {
     return new Promise((resolve) => {
+      let resolved = false;
+
       const tryLoad = () => {
+        if (resolved) return false;
         const voices = speechSynthesis.getVoices();
         if (voices.length > 0) {
           this.selectVoice(voices);
+          resolved = true;
           resolve();
           return true;
         }
@@ -76,12 +80,17 @@ export class WebSpeechTTS {
       if (tryLoad()) return;
 
       // Listen for voiceschanged (Chrome needs this)
-      speechSynthesis.onvoiceschanged = () => {
+      speechSynthesis.addEventListener('voiceschanged', () => {
         tryLoad();
-      };
+      });
 
       // Timeout fallback
-      setTimeout(() => resolve(), 1000);
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          resolve();
+        }
+      }, 1000);
     });
   }
 
@@ -124,10 +133,17 @@ export class WebSpeechTTS {
       // Cancel any ongoing speech
       speechSynthesis.cancel();
 
+      // Re-select voice from fresh list (cancel() can invalidate voice references)
+      const voices = speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        this.selectVoice(voices);
+      }
+
       const utterance = new SpeechSynthesisUtterance(text);
 
       if (this.voice) {
         utterance.voice = this.voice;
+        utterance.lang = this.voice.lang;
       }
       utterance.rate = this.config.rate;
       utterance.pitch = this.config.pitch;
