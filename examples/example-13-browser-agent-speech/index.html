@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MVAS - Browser Transformers Agent Speech</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1a0f2e 100%);
+      min-height: 100vh;
+      color: #e4e4e7;
+      padding: 20px;
+    }
+    .container { max-width: 600px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 20px; }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #f472b6, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .mode-badge {
+      display: inline-block;
+      background: rgba(244, 114, 182, 0.2);
+      color: #f472b6;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    #status {
+      text-align: center;
+      padding: 12px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 0.9rem;
+    }
+    #conversation {
+      background: rgba(255,255,255,0.03);
+      border-radius: 12px;
+      padding: 16px;
+      min-height: 300px;
+      max-height: 500px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+    .message {
+      margin-bottom: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      line-height: 1.5;
+    }
+    .message.user {
+      background: rgba(244, 114, 182, 0.15);
+      border-left: 3px solid #f472b6;
+    }
+    .message.assistant {
+      background: rgba(167, 139, 250, 0.15);
+      border-left: 3px solid #a78bfa;
+    }
+    .message.system {
+      background: rgba(255,255,255,0.05);
+      text-align: center;
+      font-size: 0.85rem;
+      color: #a1a1aa;
+    }
+    .message.tool-call, .message.tool-result {
+      background: rgba(34, 197, 94, 0.1);
+      border-left: 3px solid #22c55e;
+      font-size: 0.85rem;
+      padding: 8px 12px;
+    }
+    .message.tool-call .tool-icon, .message.tool-result .tool-icon {
+      margin-right: 6px;
+    }
+    .message code {
+      display: block;
+      margin-top: 6px;
+      padding: 6px 8px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 4px;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 0.8rem;
+      word-break: break-all;
+    }
+    .message strong {
+      display: block;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+      opacity: 0.7;
+    }
+    .controls { display: flex; gap: 12px; flex-wrap: wrap; }
+    .input-row { display: flex; gap: 12px; margin-bottom: 12px; }
+    button {
+      padding: 16px;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #recordBtn {
+      flex: 1;
+      background: linear-gradient(135deg, #f472b6, #a78bfa);
+      color: white;
+    }
+    #recordBtn:hover:not(:disabled) { transform: scale(1.02); }
+    #recordBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+    #recordBtn.recording {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+      50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+    }
+    #clearBtn {
+      background: rgba(255,255,255,0.1);
+      color: #a1a1aa;
+      flex: 0.3;
+    }
+    #clearBtn:hover { background: rgba(255,255,255,0.15); }
+    #textInput {
+      flex: 1;
+      padding: 16px;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      background: rgba(255,255,255,0.1);
+      color: #e4e4e7;
+      outline: none;
+      transition: all 0.2s;
+    }
+    #textInput::placeholder { color: #a1a1aa; }
+    #textInput:focus {
+      background: rgba(255,255,255,0.15);
+      box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.3);
+    }
+    .info {
+      margin-top: 20px;
+      padding: 16px;
+      background: rgba(244, 114, 182, 0.1);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+    .info strong { color: #f472b6; }
+    .pipeline {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 8px;
+      font-family: monospace;
+    }
+    .local { color: #f472b6; }
+    .agent { color: #a78bfa; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Modular Voice Agent SDK</h1>
+      <span class="mode-badge">Transformers + Pi Agent + WebSpeech</span>
+    </header>
+
+    <div id="status">Connecting...</div>
+
+    <div id="conversation">
+      <div class="message system">Press and hold to speak, or type a message and press Enter. The agent can read, write, and edit files.</div>
+    </div>
+
+    <div class="input-row">
+      <input type="text" id="textInput" placeholder="Type a message..." />
+    </div>
+
+    <div class="controls">
+      <button id="recordBtn" disabled>Hold to Speak</button>
+      <button id="clearBtn">Clear</button>
+    </div>
+
+      <div class="info">
+      <strong>Browser Transformers + Pi Agent:</strong> Transformers.js Whisper STT + Pi Agent (with internal tool execution) + WebSpeech TTS
+      <div class="pipeline">
+        <span class="local">Transformers STT</span> &rarr;
+        <span class="agent">Pi Agent</span> &rarr;
+        <span class="local">WebSpeech TTS</span>
+      </div>
+      <div style="margin-top: 10px; color: #a1a1aa;">
+        Try: "What files are in this directory?" &bull; "Read the README" &bull; "Create a hello world script"
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./client.ts"></script>
+</body>
+</html>
