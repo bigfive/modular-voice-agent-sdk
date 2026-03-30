@@ -2,325 +2,166 @@
 
 All notable changes to this project will be documented in this file.
 
+---
+
 ## [2.9.3] - 2026-03-31
 
-### New Features
+### Added
+- `VoiceClient.sendText()` for text-only messages (per-request `skipTTS`)
+- `modular-voice-agent-sdk/ui` subpath with `ChatRenderer` and related types
+- New examples:
+  - `example-12-ui-demo`
+  - `example-13-browser-agent-speech`
 
-**Skip TTS Functionality for Text Messages**
+### Fixed
+- `WebSpeechTTS` voice loading race condition
+- Voice invalidation after `speechSynthesis.cancel()`
+- Sentence splitter handling of decimals and abbreviations
 
-Added `sendText()` method to `VoiceClient` allowing clients to bypass TTS for specific messages:
+---
 
-```typescript
-// Send a text message without speech synthesis
-await client.sendText('Hello, this will appear as text only', { skipTTS: true });
-```
+## [2.9.2] - 2026-03-27
 
-Implemented server-side handling of `skipTTS` flag in `PipelineSession` and updated protocol definitions to support the parameter.
+### Fixed
+- Post-build script now adds `.js` extensions for Node ESM compatibility
 
-**UI Demo Example Showcasing Skip TTS**
+---
 
-Created `example-12-ui-demo` demonstrating client-controlled TTS skipping via a checkbox UI, with text input for sending typed messages.
+## [2.9.1] - 2026-03-27
 
-**Browser Agent Speech Example**
+### Fixed
+- `tts: null` now correctly disables TTS (previously fell back to default backend)
 
-Added `example-13-browser-agent-speech` demonstrating browser-based voice agent integration with browser speech APIs.
+---
 
-**Expose UI Components as Part of SDK**
+## [2.9.0] - 2026-03-27
 
-Added `src/ui/` directory with `ChatRenderer` component and associated styles, exported via the `./ui` subpath in package.json.
+### Added
+- Session-level `wantsTTS` flag to globally disable TTS
+
+---
+
+## [2.8.0] - 2026-03-20
+
+### Added
+- `recording_start` protocol message (required before sending audio)
+- `PipelineSession` busy state machine (`idle` → `recording` → `processing`)
+- Recording timeout configuration
+- `PipelineSession.injectFromServer(text)`
+
+---
+
+## [2.7.0] - 2026-03-17
+
+### Breaking
+- `connect()` now waits for full session initialization (configurable timeout)
+
+### Fixed
+- `isReady()` now validates session initialization state
+
+---
+
+## [2.6.2] - 2026-03-05
+
+### Added
+- Convenience APIs:
+  - `encodeWav()`
+  - `synthesizeToWav()`
+  - Model/cache inspection APIs
+- Programmatic setup API (`modular-voice-agent-sdk/setup`)
+
+---
+
+## [2.6.1] - 2026-02-27
+
+### Changed
+- Reduced and standardized pipeline logging
+
+---
+
+## [2.6.0] - 2026-02-22
+
+### Added
+- Transport abstraction layer (`Transport` interface)
+- `HttpSseTransport`
+- `getTransport()` method
+
+### Deprecated
+- `getWebSocket()`
+
+---
+
+## [2.5.1] - 2026-02-20
+
+### Fixed
+- Protocol types now exported from server package
+
+---
+
+## [2.5.0] - 2026-02-17
+
+### Added
+- Agent SDK backend (`AgentLLM`)
+- Custom text replacement rules
+- Pipeline cancellation support
+
+### Fixed
+- Empty LLM responses with `end_turn` handled correctly
+- Empty assistant messages excluded from history
+
+---
 
 ## [2.4.0] - 2026-02-17
 
-### New Features
-
-**Custom Text Replacements**
-
-TextNormalizer now supports custom replacement rules for speech normalization. Replacements accept string or regex patterns and run before built-in normalizations:
-
-```typescript
-const pipeline = new VoicePipeline({
-  textReplacements: [
-    ['1:1', 'one on one'],
-    [/PR#(\d+)/g, 'PR $1'],
-    [/\bAPI\b/gi, 'A P I'],
-  ],
-});
-```
-
-**Pipeline Cancellation Support**
-
-Session `destroy()` now signals in-progress pipelines to stop. Tool execution is skipped when a session is cancelled, and cancelled pipelines are left to clean up in the background rather than blocking.
+### Added
+- Custom text replacement rules
+- Pipeline cancellation support
 
 ### Fixed
+- Empty response handling improvements
+- Conversation history cleanup
 
-- Empty LLM responses with `end_turn`/`stop` finish reason are now treated as valid (model chose silence) instead of throwing an error. Only `length` (token limit) still throws.
-- Empty assistant messages are no longer added to conversation history, preventing issues mid-conversation.
+---
 
 ## [2.3.0] - 2026-01-16
 
-### New Features
+### Added
+- `VoiceClient.isSpeaking` and `stopSpeaking()`
 
-**Speaking State and Control**
-
-Added `isSpeaking` getter and `stopSpeaking()` method to `VoiceClient` for monitoring and controlling speech playback:
-
-```typescript
-// Check if audio is currently being spoken (local TTS or server audio)
-if (client.isSpeaking) {
-  console.log('Currently speaking...');
-}
-
-// Stop any current speech playback
-client.stopSpeaking();
-```
-
-The `isSpeaking` getter returns `true` when:
-- Local TTS is actively speaking
-- Server audio is playing
-- Client status is 'speaking'
+---
 
 ## [2.2.1] - 2026-01-15
 
 ### Fixed
+- Improved `responseId` grouping for streaming segments
 
-**responseId Grouping by Stream Segments**
-
-The `responseId` is now grouped logically by stream segments instead of generating a new ID for every message:
-
-- `transcript` gets its own `responseId`
-- `response_chunk` + `audio` + `complete` share one `responseId` (streaming segment)
-- `tool_call` and `tool_result` each get their own `responseId`
-- After `complete` or `error`, the streaming `responseId` resets for the next segment
-
-Before:
-```
-req_001 → res_001: transcript
-req_001 → res_002: response_chunk "Let"
-req_001 → res_003: response_chunk "me"
-req_001 → res_004: response_chunk "check"
-req_001 → res_005: tool_call (get_weather)
-req_001 → res_006: tool_result (weather data)
-req_001 → res_007: response_chunk "The"
-req_001 → res_008: complete
-```
-
-After:
-```
-req_001 → res_001: transcript
-req_001 → res_002: response_chunk "Let"
-req_001 → res_002: response_chunk "me check"
-req_001 → res_002: audio
-req_001 → res_002: complete
-req_001 → res_003: tool_call (get_weather)
-req_001 → res_004: tool_result (weather data)
-req_001 → res_005: response_chunk "The weather is..."
-req_001 → res_005: audio
-req_001 → res_005: complete
-```
-
-This makes it easier to correlate streaming chunks with their audio and completion signals.
+---
 
 ## [2.2.0] - 2026-01-15
 
-### New Features
+### Added
+- `EventMeta` for request/response correlation
 
-**EventMeta on Event Callbacks**
-
-All request-scoped events now receive an `EventMeta` parameter for request/response correlation:
-
-```typescript
-interface EventMeta {
-  requestId: string;
-  responseId: string | null;  // null in local mode
-}
-
-client.on('transcript', (text: string, meta: EventMeta) => {
-  console.log(`Request ${meta.requestId}: ${text}`);
-});
-
-client.on('responseChunk', (text: string, meta: EventMeta) => {});
-client.on('responseComplete', (fullText: string, meta: EventMeta) => {});
-client.on('toolCall', (toolCall: ToolCallInfo, meta: EventMeta) => {});
-client.on('toolResult', (toolCallId: string, result: unknown, meta: EventMeta) => {});
-client.on('error', (error: Error, meta: EventMeta) => {});
-```
-
-Note: `status` and `progress` events do not include meta (they are not request-scoped).
-
-### New Exports
-
-- `EventMeta` - Type for event metadata
-- `ToolCallInfo` - Type for tool call information
+---
 
 ## [2.1.0] - 2026-01-15
 
-### New Features
+### Added
+- `getWebSocket()` access
 
-**WebSocket Access**
-
-Added `getWebSocket()` method to `VoiceClient` for custom app-specific messages:
-
-```typescript
-const ws = client.getWebSocket();
-// Send custom messages, add event listeners, etc.
-```
+---
 
 ## [2.0.0] - 2026-01-15
 
-### Breaking Changes
+### Breaking
+- WebSocket protocol now uses envelope format (`ClientEnvelope`, `ServerEnvelope`)
+- Introduced `session_init` message
+- ULID-based ID system (`sessionId`, `requestId`, `responseId`)
 
-**WebSocket Protocol Envelope Format**
+→ See `/docs/migration/v2.md`
 
-All WebSocket messages now use an envelope format with session, request, and response IDs for improved traceability and debugging.
-
-#### Client → Server Messages
-
-Before (v1.x):
-```json
-{"type":"audio","data":"...","sampleRate":16000}
-```
-
-After (v2.0.0):
-```json
-{
-  "sessionId": "ses_01HGW2V000ABCD1234567890",
-  "requestId": "req_01HGW2V3XKTSV4RRFFQ69G5F",
-  "message": {"type":"audio","data":"...","sampleRate":16000}
-}
-```
-
-#### Server → Client Messages
-
-Before (v1.x):
-```json
-{"type":"transcript","text":"Hello"}
-```
-
-After (v2.0.0):
-```json
-{
-  "sessionId": "ses_01HGW2V000ABCD1234567890",
-  "requestId": "req_01HGW2V3XKTSV4RRFFQ69G5F",
-  "responseId": "res_01HGW2V3XMQWERTY12345678",
-  "message": {"type":"transcript","text":"Hello"}
-}
-```
-
-#### New `session_init` Message
-
-The server now sends a `session_init` message immediately on connection:
-```json
-{
-  "sessionId": "ses_01HGW2V000ABCD1234567890",
-  "requestId": null,
-  "responseId": "res_01HGW2V001...",
-  "message": {"type":"session_init","sessionId":"ses_01HGW2V000ABCD1234567890"}
-}
-```
-
-### ID Format
-
-All IDs use ULID (Universally Unique Lexicographically Sortable Identifier) with prefixes:
-
-| ID | Format | Generated By | Purpose |
-|----|--------|--------------|---------|
-| `sessionId` | `ses_<ulid>` | Server | Identifies the WebSocket session |
-| `requestId` | `req_<ulid>` | Client | Groups messages for a single user turn |
-| `responseId` | `res_<ulid>` | Server | Uniquely identifies each server message |
-
-### Migration Guide
-
-#### If using `VoiceClient` (recommended)
-
-No code changes required. The `VoiceClient` class handles the envelope protocol automatically.
-
-#### If using custom WebSocket handling
-
-1. **Server-side**: Update your message handler to unwrap the `ClientEnvelope` and wrap responses in `ServerEnvelope`:
-
-```typescript
-import {
-  generateId,
-  type ClientEnvelope,
-  type ServerEnvelope
-} from 'modular-voice-agent-sdk/client';
-
-// On connection
-const sessionId = session.getSessionId();
-
-// Send session_init
-sendEnvelope(ws, sessionId, null, { type: 'session_init', sessionId });
-
-// Handle messages
-ws.on('message', (data) => {
-  const envelope = JSON.parse(data) as ClientEnvelope;
-  const { requestId, message } = envelope;
-
-  // Process message...
-
-  // Wrap responses
-  const response: ServerEnvelope = {
-    sessionId,
-    requestId,
-    responseId: generateId('res'),
-    message: { type: 'transcript', text: '...' }
-  };
-  ws.send(JSON.stringify(response));
-});
-```
-
-2. **Client-side**: Wrap outgoing messages and unwrap incoming messages:
-
-```typescript
-import {
-  generateId,
-  type ClientEnvelope,
-  type ServerEnvelope
-} from 'modular-voice-agent-sdk/client';
-
-let sessionId: string | null = null;
-
-// Handle incoming messages
-ws.onmessage = (event) => {
-  const envelope = JSON.parse(event.data) as ServerEnvelope;
-
-  if (envelope.message.type === 'session_init') {
-    sessionId = envelope.message.sessionId;
-    // Now ready to send messages
-  }
-
-  // Handle other messages...
-};
-
-// Send messages
-function send(message: ClientMessage) {
-  const requestId = generateId('req');
-  const envelope: ClientEnvelope = { sessionId, requestId, message };
-  ws.send(JSON.stringify(envelope));
-}
-```
-
-### New Exports
-
-The following are now exported from `modular-voice-agent-sdk/client`:
-
-- `generateId(prefix: 'ses' | 'req' | 'res'): string` - Generate ULID-based IDs
-- `ClientEnvelope` - Type for client → server envelope
-- `ServerEnvelope` - Type for server → client envelope
-- `SessionInitMessage` - Type for session initialization message
-- `IdPrefix` - Type for ID prefixes
-
-### New Methods
-
-**`PipelineSession`**:
-- `getSessionId(): string` - Get the session's unique ID
-- `getCurrentRequestId(): string | null` - Get the current request ID
-- `setCurrentRequestId(id: string | null): void` - Set the current request ID
-
-**`VoiceClient`**:
-- `getSessionId(): string | null` - Get the session ID (null if not connected)
-- `getCurrentRequestId(): string | null` - Get the current request ID
+---
 
 ## [1.4.1] and earlier
 
-See git history for changes prior to v2.0.0.
+See git history.
