@@ -19,6 +19,8 @@ npm run example8  # WebSpeech + Cloud LLM (port 3105)
 npm run example9  # Native STT/TTS + Cloud LLM (port 3106)
 npm run example10 # CloudAudioLLM multimodal (port 3107)
 npm run example11 # Pi Agent voice coding (port 3108)
+npm run example12 # Pi Agent voice coding (port 3108)
+npm run example13 # Pi Agent voice coding (port 3108)
 ```
 
 > **Note:** Each server example loads ML models into memory. Run one at a time to avoid exhausting RAM.
