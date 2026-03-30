@@ -12,6 +12,8 @@ export interface UIElements {
   conversation: HTMLElement;
   recordBtn: HTMLButtonElement;
   clearBtn: HTMLButtonElement;
+  /** Optional text input for typed messages (may be null if not present in DOM) */
+  textInput: HTMLInputElement | null;
 }
 
 export interface MessageHelpers {
@@ -42,6 +44,7 @@ export function getUIElements(): UIElements {
     conversation: document.getElementById('conversation')!,
     recordBtn: document.getElementById('recordBtn') as HTMLButtonElement,
     clearBtn: document.getElementById('clearBtn') as HTMLButtonElement,
+    textInput: document.getElementById('textInput') as HTMLInputElement | null,
   };
 }
 

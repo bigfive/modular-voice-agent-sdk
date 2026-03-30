@@ -45,10 +45,12 @@ export function setupRecordButton(client: VoiceClient, recordBtn: HTMLButtonElem
 
 /**
  * Set up spacebar push-to-talk.
+ * Ignores events when textInput is focused to allow typing spaces.
  */
-export function setupKeyboardControls(client: VoiceClient, recordBtn: HTMLButtonElement): void {
+export function setupKeyboardControls(client: VoiceClient, recordBtn: HTMLButtonElement, textInput?: HTMLInputElement | null): void {
   document.addEventListener('keydown', (e) => {
     if (e.code === 'Space' && !e.repeat && !recordBtn.disabled) {
+      if (textInput && textInput === document.activeElement) return;
       e.preventDefault();
       client.startRecording();
     }
@@ -56,6 +58,7 @@ export function setupKeyboardControls(client: VoiceClient, recordBtn: HTMLButton
 
   document.addEventListener('keyup', (e) => {
     if (e.code === 'Space') {
+      if (textInput && textInput === document.activeElement) return;
       e.preventDefault();
       client.stopRecording();
     }
@@ -77,14 +80,37 @@ export function setupClearButton(
 }
 
 /**
+ * Set up text input for typed messages.
+ * Sends text on Enter key press, bypasses STT.
+ * Only active when client status is 'ready' or 'speaking'.
+ */
+export function setupTextInput(client: VoiceClient, textInput: HTMLInputElement | null): void {
+  if (!textInput) return;
+
+  textInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.repeat) {
+      const text = textInput.value.trim();
+      if (!text) return;
+
+      const status = client.getStatus();
+      if (status !== 'ready' && status !== 'speaking') return;
+
+      textInput.value = '';
+      client.sendText(text);
+    }
+  });
+}
+
+/**
  * Set up all controls at once (record button, keyboard, clear button).
  */
 export function setupAllControls(config: ControlsConfig): void {
   const { client, elements, messages } = config;
 
   setupRecordButton(client, elements.recordBtn);
-  setupKeyboardControls(client, elements.recordBtn);
+  setupKeyboardControls(client, elements.recordBtn, elements.textInput);
   setupClearButton(client, elements.clearBtn, messages.clearConversation);
+  setupTextInput(client, elements.textInput);
 }
 
 // ============ Status UI Updates ============

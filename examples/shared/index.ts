@@ -20,6 +20,7 @@ export {
   setupRecordButton,
   setupKeyboardControls,
   setupClearButton,
+  setupTextInput,
   setupAllControls,
   updateRecordButtonState,
   type ControlsConfig,
