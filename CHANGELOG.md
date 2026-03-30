@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.9.3] - 2026-03-31
+
+### New Features
+
+**Skip TTS Functionality for Text Messages**
+
+Added `sendText()` method to `VoiceClient` allowing clients to bypass TTS for specific messages:
+
+```typescript
+// Send a text message without speech synthesis
+await client.sendText('Hello, this will appear as text only', { skipTTS: true });
+```
+
+Implemented server-side handling of `skipTTS` flag in `PipelineSession` and updated protocol definitions to support the parameter.
+
+**UI Demo Example Showcasing Skip TTS**
+
+Created `example-12-ui-demo` demonstrating client-controlled TTS skipping via a checkbox UI, with text input for sending typed messages.
+
+**Browser Agent Speech Example**
+
+Added `example-13-browser-agent-speech` demonstrating browser-based voice agent integration with browser speech APIs.
+
+**Expose UI Components as Part of SDK**
+
+Added `src/ui/` directory with `ChatRenderer` component and associated styles, exported via the `./ui` subpath in package.json.
+
 ## [2.4.0] - 2026-02-17
 
 ### New Features
